@@ -1,6 +1,91 @@
 'use client';
 import { useState } from 'react';
 import { FiUpload, FiTrash2, FiCpu } from 'react-icons/fi';
+import { FaCode, FaDatabase, FaCloud, FaMobile, FaDesktop, FaRobot, FaChartLine, FaShieldAlt, FaCuttlefish } from 'react-icons/fa';
+
+const predefinedJobs = [
+  {
+    id: 'frontend',
+    title: 'UI/UX designer',
+    icon: FaCode,
+    color: '#10B981',
+    description: `Job Title: UX/UI Designer
+
+Role Summary: We are in search of a UX/UI Designer who is passionate about improving user experience by creating intuitive, user-friendly design solutions. This position is suitable for those who are at the early stage of their career and have a deep interest in interactive design.
+
+Responsibilities:
+- Design and implement user interfaces for different digital platforms.
+- Collaborate with the product and engineering team to define and implement innovative solutions for the product direction, visuals, and experience.
+- Develop wireframes, user flows, and prototypes to effectively communicate interaction and design ideas.
+- Conduct user research and evaluate user feedback to optimize the design.
+- Establish and promote design guidelines, best practices, and standards.
+
+Requirements:
+- Degree in Design, Computer Science or a related field.
+- 0-3 years of experience in UX/UI design.
+- Proficiency in graphic design software including Adobe Photoshop, Adobe Illustrator, and other visual design tools.
+- Familiarity with HTML, CSS, and JavaScript for rapid prototyping.
+- Strong visual design skills with a good understanding of user-system interaction.
+- Ability to solve problems creatively and effectively.
+- Excellent verbal and written communication skills.
+- Up-to-date with the latest UI trends, techniques, and technologies.`
+  },
+  {
+    id: 'backend',
+    title: 'Backend Developer',
+    icon: FaDatabase,
+    color: '#6366F1',
+    description: `Seeking a Backend Developer with strong Python/Node.js skills and experience with REST APIs, 
+    database design, and server architecture. Knowledge of microservices and cloud platforms preferred.`
+  },
+  {
+    id: 'cloud',
+    title: 'Cloud Engineer',
+    icon: FaCloud,
+    color: '#EC4899',
+    description: `Looking for a Cloud Engineer with AWS/Azure expertise, Infrastructure as Code experience, 
+    and strong DevOps practices. Knowledge of containerization and orchestration required.`
+  },
+  {
+    id: 'mobile',
+    title: 'Mobile Developer',
+    icon: FaMobile,
+    color: '#F59E0B',
+    description: `Mobile Developer position requiring React Native/Flutter experience, 
+    knowledge of mobile UI/UX principles, and app deployment processes.`
+  },
+  {
+    id: 'fullstack',
+    title: 'Full Stack',
+    icon: FaDesktop,
+    color: '#8B5CF6',
+    description: `Full Stack Developer role requiring expertise in both frontend and backend technologies, 
+    database management, and modern web development practices.`
+  },
+  {
+    id: 'ai',
+    title: 'AI Engineer',
+    icon: FaRobot,
+    color: '#EF4444',
+    description: `AI Engineer position focusing on machine learning model development, 
+    deep learning frameworks, and ML ops. Experience with PyTorch/TensorFlow required.`
+  },
+  {
+    id: 'data',
+    title: 'Data Scientist',
+    icon: FaChartLine,
+    color: '#14B8A6',
+    description: `Data Scientist role requiring expertise in statistical analysis, 
+    machine learning, and data visualization. Python and SQL proficiency needed.`
+  },
+  {
+    id: 'custom',
+    title: 'Custom Job Description',
+    icon: FaCuttlefish,
+    color: '#D946EF',
+    description: `lajavathiye`
+  }
+];
 
 export default function CVScoring() {
   const [uploadedCV, setUploadedCV] = useState(null);
@@ -9,6 +94,7 @@ export default function CVScoring() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
   const [processingModels, setProcessingModels] = useState({});
+  const [selectedJob, setSelectedJob] = useState(null);
 
   const aiModels = [
     { id: 'gpt4', name: 'GPT-4 Analysis', color: '#10B981' },
@@ -92,11 +178,36 @@ export default function CVScoring() {
     }
   };
 
+  const handleJobSelect = (job) => {
+    setSelectedJob(job.id);
+    setJobDescription(job.description);
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 p-8">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-4xl font-bold text-white mb-8 background-blur">InterviewMe- CV-Score Module</h1>
         
+        {/* Job Selection Section */}
+        <div className="mb-8">
+          <h2 className="text-xl text-white mb-4">Select Job Position</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+            {predefinedJobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => handleJobSelect(job)}
+                className={`p-4 rounded-lg border-2 transition-all hover:scale-105 flex flex-col items-center ${
+                  selectedJob === job.id ? 'border-opacity-100' : 'border-opacity-50'
+                }`}
+                style={{ borderColor: job.color, backgroundColor: selectedJob === job.id ? `${job.color}20` : 'transparent' }}
+              >
+                <job.icon className="w-8 h-8 mb-2" style={{ color: job.color }} />
+                <span className="text-white text-sm text-center">{job.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Upload and Job Description Section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           <div className="bg-gray-800 p-6 rounded-lg border-2 border-opacity-50" style={{ borderColor: '#10B981' }}>
@@ -135,7 +246,7 @@ export default function CVScoring() {
             <h2 className="text-xl text-white mb-4">Job Description</h2>
             <textarea
               className="w-full h-48 bg-gray-700 text-white rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter job description here..."
+              placeholder="Select a job position or enter custom job description..."
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
             />
