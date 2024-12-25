@@ -11,3 +11,5 @@ bin/
 *bin/
 backend/bin/
 backend/tmp/
+uploads/
+backend/uploads/

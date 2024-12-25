@@ -49,6 +49,7 @@ func main() {
 	})
 
 	app.Post(baseURL+"/upload", handlers.UploadFile)
+	app.Delete(baseURL+"/delete", handlers.DeleteFile)
 
 	port := ":8080"
 	println("Server running on port", port)
