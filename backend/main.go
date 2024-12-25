@@ -1,13 +1,15 @@
 package main
 
 import (
+	"net/url"
 	"os"
+
+	"interviewme/handlers"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
-	_ "github.com/joho/godotenv"
 )
 
 func main() {
@@ -28,35 +30,27 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
 
-	// Get base URL from environment variables
-	baseURL := os.Getenv("BASE_URL")
+	// Create uploads directory if it doesn't exist
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		panic("Could not create uploads directory")
+	}
 
-	// Use base URL for routing
+	// Parse base URL and get path component
+	baseURL := "/"
+	if urlStr := os.Getenv("BASE_URL"); urlStr != "" {
+		if parsedURL, err := url.Parse(urlStr); err == nil {
+			baseURL = parsedURL.Path
+		}
+	}
+
+	// Setup routes with cleaned baseURL
 	app.Get(baseURL+"/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
-	// Add upload route
-	app.Post(baseURL+"/upload", func(c *fiber.Ctx) error {
-		file, err := c.FormFile("file")
-		if err != nil {
-			return c.Status(400).JSON(fiber.Map{
-				"error": "File upload failed",
-			})
-		}
+	app.Post(baseURL+"/upload", handlers.UploadFile)
 
-		// Save file
-		err = c.SaveFile(file, "./uploads/"+file.Filename)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{
-				"error": "Could not save file",
-			})
-		}
-
-		return c.JSON(fiber.Map{
-			"message": "File uploaded successfully",
-		})
-	})
-
-	app.Listen(":8080")
+	port := ":8080"
+	println("Server running on port", port)
+	app.Listen(port)
 }
