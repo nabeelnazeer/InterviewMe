@@ -1,0 +1,13 @@
+*.env*
+.vscode/
+*venv/
+.DS_Store
+bin/
+/.idea
+.idea
+.env
+.vscode
+*tmp/
+*bin/
+backend/bin/
+backend/tmp/

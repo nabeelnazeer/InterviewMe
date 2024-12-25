@@ -1,0 +1,21 @@
+# Config file for Air
+[build]
+  bin = "bin/main"
+  cmd = "go build -o bin/main"
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  exclude_dir = ["assets", "tmp", "vendor"]
+  exclude_file = ["air.toml"]
+  follow_symlink = true
+  full_bin = "APP_ENV=dev bin/main"
+  log = "tmp/air.log"
+  main = "."
+
+[log]
+  color = true
+  time = true
+
+[server]
+  address = ":8080"
+  host = "localhost"
+  port = 8080
+  root = "."
