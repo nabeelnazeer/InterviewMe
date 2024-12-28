@@ -23,6 +23,7 @@ type PreprocessedData struct {
 	Entities  ExtractedEntities `json:"entities"`
 	Skills    []string          `json:"skills"`
 	Education []string          `json:"education"`
+	ID        string            `json:"id"` // Add this field
 }
 
 // Update ExtractedEntities struct to match the actual response format
@@ -134,6 +135,15 @@ func PreprocessResume(c *fiber.Ctx) error {
 	// Preprocess text
 	processedText := preprocessText(extractedText)
 
+	// Generate a unique ID for the resume
+	resumeID := fmt.Sprintf("resume_%d", time.Now().Unix())
+
+	// Save processed text with the new function
+	err = SaveProcessedText("resume", processedText, resumeID)
+	if err != nil {
+		log.Printf("Error saving resume text: %v", err)
+	}
+
 	// Extract entities using Gemini API
 	entities, err := extractEntitiesWithGemini(processedText)
 	if err != nil {
@@ -152,6 +162,7 @@ func PreprocessResume(c *fiber.Ctx) error {
 		Entities:  entities,
 		Skills:    skills,
 		Education: education,
+		ID:        resumeID, // Add this field to PreprocessedData struct
 	}
 
 	return c.JSON(result)
@@ -380,6 +391,15 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	// Preprocess text
 	processedText := preprocessText(data.Description)
 
+	// Generate a unique ID for the job description
+	jobID := fmt.Sprintf("job_%d", time.Now().Unix())
+
+	// Save processed text
+	err = SaveProcessedText("job", processedText, jobID)
+	if err != nil {
+		log.Printf("Error saving job description: %v", err)
+	}
+
 	// Initialize Gemini client
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
@@ -462,6 +482,7 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"requirements": requirements,
+		"id":           jobID, // Include the ID in the response
 	})
 }
 
