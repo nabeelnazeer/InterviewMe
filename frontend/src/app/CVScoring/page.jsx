@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { FiUpload, FiTrash2, FiCpu } from 'react-icons/fi';
 import { FaCode, FaDatabase, FaCloud, FaMobile, FaDesktop, FaRobot, FaChartLine, FaShieldAlt, FaCuttlefish } from 'react-icons/fa';
 
@@ -88,6 +88,7 @@ Requirements:
 ];
 
 export default function CVScoring() {
+  const fileInputRef = useRef(null);
   const [uploadedCV, setUploadedCV] = useState(null);
   const [jobDescription, setJobDescription] = useState('');
   const [modelScores, setModelScores] = useState({});
@@ -171,6 +172,11 @@ export default function CVScoring() {
       setError(null);
       setPreprocessedData(null);
       setProcessingModels({});
+      
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
 
     } catch (err) {
       setError('Failed to delete CV. Please try again.');
@@ -215,14 +221,101 @@ export default function CVScoring() {
       if (!response.ok) throw new Error('Failed to process job description');
       
       const result = await response.json();
+      console.log('Raw Job Analysis Result:', result);
+
+      // Check if the response has the expected structure
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid response format: not an object');
+      }
+
+      // Initialize default structure if requirements is missing
+      if (!result.requirements) {
+        result.requirements = {
+          skills: [],
+          experience: {
+            min_years: 0,
+            level: 'entry',
+            areas: []
+          },
+          education: {
+            degree: '',
+            fields: [],
+            qualifications: []
+          },
+          responsibilities: []
+        };
+      }
+      
       setJobAnalysis(result);
     } catch (err) {
-      setError('Failed to process job description');
-      console.error(err);
+      setError('Failed to process job description: ' + err.message);
+      console.error('Job processing error:', err);
     } finally {
       setIsProcessingJob(false);
     }
   };
+
+  const RequirementsList = ({ title, items, color }) => (
+    items && items.length > 0 && (
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold mb-1" style={{ color }}>
+          {title}
+        </h4>
+        <ul className="list-disc list-inside text-sm text-gray-300">
+          {items.map((item, idx) => (
+            <li key={idx}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )
+  );
+
+  const ExperienceSection = ({ experience, color }) => (
+    experience && (
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold mb-1" style={{ color }}>
+          Experience Requirements
+        </h4>
+        <div className="text-sm text-gray-300">
+          <p>Level: {experience.level}</p>
+          <p>Minimum Years: {experience.min_years}</p>
+          {experience.areas && experience.areas.length > 0 && (
+            <div>
+              <p>Areas:</p>
+              <ul className="list-disc list-inside pl-4">
+                {experience.areas.map((area, idx) => (
+                  <li key={idx}>{area}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  );
+
+  const EducationSection = ({ education, color }) => (
+    education && (
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold mb-1" style={{ color }}>
+          Education Requirements
+        </h4>
+        <div className="text-sm text-gray-300">
+          <p>Degree: {education.degree}</p>
+          {education.fields && (
+            <div>
+              <p>Fields:</p>
+              <ul className="list-disc list-inside pl-4">
+                {education.fields.map((field, idx) => (
+                  <li key={idx}>{field}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  );
 
   return (
     <div className="min-h-screen bg-gray-900 p-8">
@@ -265,6 +358,7 @@ export default function CVScoring() {
                   </p>
                 </div>
                 <input 
+                  ref={fileInputRef}
                   type="file" 
                   className="hidden" 
                   onChange={handleFileUpload} 
@@ -330,12 +424,37 @@ export default function CVScoring() {
                 <span className="animate-pulse">Extracting requirements...</span>
               </div>
             )}
-            {jobAnalysis && (
+            {jobAnalysis?.requirements && (
               <div className="mt-4 text-white">
-                <h3 className="font-semibold mb-2">Analysis:</h3>
-                <pre className="whitespace-pre-wrap text-sm bg-gray-700 p-2 rounded">
-                  {JSON.stringify(jobAnalysis, null, 2)}
-                </pre>
+                <h3 className="font-semibold mb-3">Job Requirements Analysis:</h3>
+                <div className="bg-gray-700 p-4 rounded space-y-4">
+                  {jobAnalysis.requirements.skills?.length > 0 && (
+                    <RequirementsList 
+                      title="Required Skills" 
+                      items={jobAnalysis.requirements.skills} 
+                      color="#10B981"
+                    />
+                  )}
+                  {jobAnalysis.requirements.experience && (
+                    <ExperienceSection 
+                      experience={jobAnalysis.requirements.experience} 
+                      color="#6366F1"
+                    />
+                  )}
+                  {jobAnalysis.requirements.education && (
+                    <EducationSection 
+                      education={jobAnalysis.requirements.education} 
+                      color="#EC4899"
+                    />
+                  )}
+                  {jobAnalysis.requirements.responsibilities?.length > 0 && (
+                    <RequirementsList 
+                      title="Key Responsibilities" 
+                      items={jobAnalysis.requirements.responsibilities} 
+                      color="#F59E0B"
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

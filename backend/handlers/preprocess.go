@@ -52,6 +52,21 @@ type JobDescription struct {
 	Experience    map[string]string `json:"experience_requirements"`
 }
 
+type JobRequirements struct {
+	Skills     []string `json:"skills"`
+	Experience struct {
+		MinYears int      `json:"min_years"`
+		Level    string   `json:"level"`
+		Areas    []string `json:"areas"`
+	} `json:"experience"`
+	Education struct {
+		Degree         string   `json:"degree"`
+		Fields         []string `json:"fields"`
+		Qualifications []string `json:"qualifications"`
+	} `json:"education"`
+	Responsibilities []string `json:"responsibilities"`
+}
+
 // PreprocessResume handles resume preprocessing.
 func PreprocessResume(c *fiber.Ctx) error {
 	// Get the file from the request
@@ -384,14 +399,29 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 
 	// Extract requirements using Gemini API
 	model := client.GenerativeModel("gemini-pro")
-	prompt := `Extract the following from the job description:
-    1. Required skills
-    2. Experience requirements
-    3. Key responsibilities
-    
-    Provide the output in JSON format with the keys: required_skills, experience_requirements, responsibilities.
-    
-    Text: ` + processedText
+	prompt := `Analyze the following job description and extract:
+    1. Required skills (both technical and soft skills)
+    2. Experience requirements (years and level)
+    3. Educational requirements
+    4. Key responsibilities
+
+    Format the output as a clean JSON object with these exact keys:
+    {
+        "skills": ["skill1", "skill2", ...],
+        "experience": {
+            "min_years": number,
+            "level": "entry/mid/senior",
+            "areas": ["area1", "area2", ...]
+        },
+        "education": {
+            "degree": "required degree",
+            "fields": ["field1", "field2", ...],
+            "qualifications": ["qualification1", ...]
+        },
+        "responsibilities": ["responsibility1", "responsibility2", ...]
+    }
+
+    Job Description: ` + data.Description
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
@@ -407,19 +437,31 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get the text content
+	// Get the text content and clean it
 	content := resp.Candidates[0].Content.Parts[0].(genai.Text)
-	analysisText := string(content)
+	jsonStr := cleanJSONString(string(content))
 
-	// Save processed text
-	err = saveProcessedText("job", processedText)
-	if err != nil {
-		log.Printf("Error saving job description text: %v", err)
+	// Log the cleaned JSON for debugging
+	log.Printf("Cleaned JSON string: %s", jsonStr)
+
+	var requirements JobRequirements
+	if err := json.Unmarshal([]byte(jsonStr), &requirements); err != nil {
+		log.Printf("Error parsing requirements: %v, JSON: %s", err, jsonStr)
+		// Try to provide a default structure if parsing fails
+		requirements = JobRequirements{
+			Skills:           []string{},
+			Responsibilities: []string{},
+		}
+		requirements.Experience.Level = "entry"
+		requirements.Experience.MinYears = 0
+		requirements.Experience.Areas = []string{}
+		requirements.Education.Degree = ""
+		requirements.Education.Fields = []string{}
+		requirements.Education.Qualifications = []string{}
 	}
 
 	return c.JSON(fiber.Map{
-		"processed_text": processedText,
-		"analysis":       analysisText,
+		"requirements": requirements,
 	})
 }
 

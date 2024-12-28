@@ -13,3 +13,4 @@ backend/bin/
 backend/tmp/
 uploads/
 backend/uploads/
+backend/proccessed_texts/
