@@ -49,7 +49,12 @@ func main() {
 	})
 
 	app.Post(baseURL+"/upload", handlers.UploadFile)
+	app.Post(baseURL+"/preprocess", handlers.PreprocessResume)
+	app.Post(baseURL+"/preprocess-job", handlers.PreprocessJobDescription) // Existing route
 	app.Delete(baseURL+"/delete", handlers.DeleteFile)
+
+	// Add new route for testing Gemini
+	// app.Get(baseURL+"/test-gemini", handlers.TestGemini)
 
 	port := ":8080"
 	println("Server running on port", port)

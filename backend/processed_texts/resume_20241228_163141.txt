@@ -1,0 +1,150 @@
+Nabeel Nazeer
+
+Last Updated on 24th December 2024
+
+nabeel777@ug.cusat.ac.in
++91 7736794449 | nabeelnazeer2565@gmail.com
+
+EDUCATION
+
+EXPERIENCE
+
+COCHIN UNIVERSITY
+
+INDIAN INSTITUTE OF TECHNOLOGY MANDI | AI Research
+
+IMSc in Computer Science
+Specialization: Artificial
+Intelligence and Data Science
+aug 2024 | Kochi, Kerala
+
+LINKS
+Github:// nabeelnazeer
+LinkedIn:// nabeelnazeer
+
+COURSEWORK
+GRADUATE
+Advanced Machine Learning
+Object-oriented programming
+Mathematics for Data Science
+Data Structures
+Operating Systems
+Database Systems
+Design And Analysis of Algorithms
+Agile Software Engineering
+Optimization Techniques
+Cloud Computing
+Digital Signal Processing
+Machine Learning
+Big Data Analytics
+Regression Analysis
+
+SKILLS
+PROGRAMMING
+Over 5000 lines:
+Java • Shell • Python • Javascript
+• Matlab • R Programming language •
+LATEX
+Over 1000 lines:
+C • C++ • CSS • Assembly
+Familiar:
+Apache Hadoop • Go Lang • Android •
+MySQL
+
+SOFT SKILLS
+Analytical Skills • Problem-Solving •
+Communication • Team Collaboration
+OCaml • Project Management • Critical
+Thinking • LATEX
+Attention to Detail
+
+Intern
+July 2024 | Mandi, India
+• Conducted research on EEG data for seizure medication classification.
+• Developed deep learning models for accurate EEG data classification.
+• Handled large datasets, ensuring efficient data preprocessing and management.
+• Proficient in Python, TensorFlow, Keras, and PyTorch.
+• Collaborated with a multidisciplinary research team.
+
+RESEARCH
+MANAS LAB IIT, MANDI | Research Intern
+May 2024 – present | Himachal Pradesh, India
+Worked with Arnav Bhavsar and Hrishikesh Tiwary in classifying seizure
+medications using deep learning for better treatment outcomes. Developed and
+implemented models, handled large datasets, and collaborated with a research team.
+
+AWARDS
+2024
+2024
+2023
+2024
+2024
+2023
+
+AI-Samasya hack:ICGAIFE 2.0.
+Hack-for-tomorrow24
+ISRO START Programme:
+University level drama
+University-level skit
+Youth Festival Andhra University
+
+Fourth position
+Second position
+Certificate of Merit: Grade A+
+Certificate of Appreciation, First,third
+Certificate of Appreciation, First
+Mime, Fifth
+
+PROJECTS
+SEIZURE MEDICATION CLASSIFICATION | AI Research Intern
+July 2024 | Mandi, India
+• Developed sophisticated deep learning models for accurate classification of
+EEG data.
+• Managed and preprocessed large datasets effectively.
+• Collaborated with a multidisciplinary research team.
+Tech Stack: Python, TensorFlow, Keras, Scikit-learn, NumPy, Pandas
+
+OTTERLY: INTERACTIVE LEARNING PLATFORM | Developer
+2024
+• Developed a free learning platform for web development newbies.
+• Created courses accessible to all, formatted for easy understanding.
+• Provided an interactive learning experience with guidance from an AI virtual
+assistant.
+• Designed interesting projects for students as part of the course.
+Tech Stack: JavaScript, React, Node.js, Express, MongoDB, AWS, HTML, CSS
+
+CIPHERTAG: COMPLETE MEDICINE MANAGEMENT APP | Project
+2024
+• An app dedicated to monitor the flow of prescription medications.
+• Modern facilities for hospital administrations and med prescription.
+• Allows pharma companies to monitor their product and make data driven decisions.
+Tech Stack: Python, Django-Rest Framework, React.js, Github Actions, Docker, AWS
+
+SAHAAYI: AI-POWERED LEARNING APP FOR DIFFERENTLY-ABLED | Project
+2024
+• An app dedicated to people with special needs
+• AI-powered learning features like a chatbot, custom pdf chat, hand sign learning.
+• UI tailored to support students with special needs(voice assistance).
+Tech Stack: Python, Django-Rest Framework, React.js, Next.js, Gemini, Transformers
+
+INCLUSIFY: AI-POWERED INCLUSIVE LEARNING PLATFORM | Project
+2024
+• Developed an AI-powered learning platform tailored for differently-abled individuals,
+enhancing accessibility, communication, and content interaction.
+• Implemented Scene Description and Topic Exploration using Computer Vision and Natural
+Language Processing (NLP) to enable spoken explanations and accessible content delivery for
+visually impaired users.
+• Built PowerPoint-to-Audio and Talk-to-PDF tools with Text-to-Speech (TTS) technologies for
+seamless content consumption.
+• Designed Braille Conversion using Transformer Models to convert YouTube text content into
+Braille format.
+• Created a Sign Language Learning and Gesture Validation System powered by Hand-Tracking
+Models and Machine Learning Algorithms.
+• Enabled Real-Time Speech Recognition and Text-to-Speech functionalities on the frontend
+for instant and responsive user interaction.
+• Integrated MCQ Generation and Scoring Systems using AI models to facilitate
+self-assessment.
+Tech Stack: Python, TensorFlow, PyTorch, OpenAI GPT, Transformers, React.js, FastAPI, OpenCV,
+GitHub Actions, Docker, AWS
+
+

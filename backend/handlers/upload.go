@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"os"
 	"path/filepath"
 
 	"github.com/gofiber/fiber/v2"
@@ -21,8 +22,16 @@ func UploadFile(c *fiber.Ctx) error {
 		})
 	}
 
+	// Create uploads directory if it doesn't exist
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to create uploads directory",
+		})
+	}
+
 	// Save file with a unique name
-	err = c.SaveFile(file, filepath.Join("uploads", "upload-"+file.Filename))
+	filename := "upload-" + file.Filename
+	err = c.SaveFile(file, filepath.Join("uploads", filename))
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
 			"error": "Unable to save the file",
@@ -30,6 +39,7 @@ func UploadFile(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "File uploaded successfully",
+		"message":  "File uploaded successfully",
+		"filename": filename,
 	})
 }

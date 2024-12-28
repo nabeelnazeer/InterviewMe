@@ -95,6 +95,10 @@ export default function CVScoring() {
   const [error, setError] = useState(null);
   const [processingModels, setProcessingModels] = useState({});
   const [selectedJob, setSelectedJob] = useState(null);
+  const [isProcessingJob, setIsProcessingJob] = useState(false);
+  const [jobAnalysis, setJobAnalysis] = useState(null);
+  const [isPreprocessing, setIsPreprocessing] = useState(false);
+  const [preprocessedData, setPreprocessedData] = useState(null);
 
   const aiModels = [
     { id: 'gpt4', name: 'GPT-4 Analysis', color: '#10B981' },
@@ -108,31 +112,42 @@ export default function CVScoring() {
     if (file) {
       setIsUploading(true);
       setError(null);
+      setPreprocessedData(null);
 
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('http://localhost:8080/api/upload', {
+        // First, upload the file
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', file);
+        
+        const uploadResponse = await fetch('http://localhost:8080/api/upload', {
           method: 'POST',
-          body: formData,
+          body: uploadFormData,
         });
 
-        if (!response.ok) {
-          throw new Error('Upload failed');
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload file');
         }
 
-        setUploadedCV(file);
-        // TODO: Update scores based on API response
-        setScores({
-          skillMatch: 85,
-          experienceMatch: 78,
-          educationMatch: 92,
-          overallScore: 85
+        // Then, preprocess the uploaded file
+        const preprocessFormData = new FormData();
+        preprocessFormData.append('resume', file);
+        
+        const preprocessResponse = await fetch('http://localhost:8080/api/preprocess', {
+          method: 'POST',
+          body: preprocessFormData,
         });
+
+        if (!preprocessResponse.ok) {
+          throw new Error('Failed to process CV');
+        }
+
+        const result = await preprocessResponse.json();
+        setUploadedCV(file);
+        setPreprocessedData(result);
+
       } catch (err) {
-        setError('Failed to upload CV. Please try again.');
-        console.error('Upload error:', err);
+        setError(err.message || 'Failed to process CV. Please try again.');
+        console.error('Processing error:', err);
       } finally {
         setIsUploading(false);
       }
@@ -141,6 +156,7 @@ export default function CVScoring() {
 
   const handleDelete = async () => {
     try {
+      // Delete the file from server
       const response = await fetch(`http://localhost:8080/api/delete?filename=${uploadedCV.name}`, {
         method: 'DELETE',
       });
@@ -149,8 +165,13 @@ export default function CVScoring() {
         throw new Error('Delete failed');
       }
 
+      // Only clear states after successful deletion
       setUploadedCV(null);
-      setScores(null);
+      setModelScores({});
+      setError(null);
+      setPreprocessedData(null);
+      setProcessingModels({});
+
     } catch (err) {
       setError('Failed to delete CV. Please try again.');
       console.error('Delete error:', err);
@@ -178,9 +199,29 @@ export default function CVScoring() {
     }
   };
 
-  const handleJobSelect = (job) => {
+  const handleJobSelect = async (job) => {
     setSelectedJob(job.id);
     setJobDescription(job.description);
+    setJobAnalysis(null);
+    
+    setIsProcessingJob(true);
+    try {
+      const response = await fetch('http://localhost:8080/api/preprocess-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: job.description }),
+      });
+
+      if (!response.ok) throw new Error('Failed to process job description');
+      
+      const result = await response.json();
+      setJobAnalysis(result);
+    } catch (err) {
+      setError('Failed to process job description');
+      console.error(err);
+    } finally {
+      setIsProcessingJob(false);
+    }
   };
 
   return (
@@ -213,11 +254,14 @@ export default function CVScoring() {
           <div className="bg-gray-800 p-6 rounded-lg border-2 border-opacity-50" style={{ borderColor: '#10B981' }}>
             <h2 className="text-xl text-white mb-4">Upload CV</h2>
             <div className="flex items-center justify-center w-full">
-              <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer hover:bg-gray-700 ${isUploading ? 'opacity-50' : ''}`}>
+              <label className={`flex flex-col items-center justify-center w-full h-48 border-2 border-gray-600 border-dashed rounded-lg cursor-pointer hover:bg-gray-700 ${isUploading || isPreprocessing ? 'opacity-50' : ''}`}>
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <FiUpload className="w-10 h-10 text-gray-400 mb-3" />
                   <p className="text-sm text-gray-400">
-                    {isUploading ? "Uploading..." : uploadedCV ? uploadedCV.name : "Click to upload CV"}
+                    {isUploading ? "Uploading..." : 
+                     isPreprocessing ? "Extracting information..." :
+                     uploadedCV ? uploadedCV.name : 
+                     "Click to upload CV"}
                   </p>
                 </div>
                 <input 
@@ -225,10 +269,40 @@ export default function CVScoring() {
                   className="hidden" 
                   onChange={handleFileUpload} 
                   accept=".pdf,.doc,.docx"
-                  disabled={isUploading} 
+                  disabled={isUploading || isPreprocessing} 
                 />
               </label>
             </div>
+            {preprocessedData && (
+              <div className="mt-4 text-white">
+                <h3 className="font-semibold mb-2">Extracted Information:</h3>
+                <div className="bg-gray-700 p-3 rounded text-sm space-y-2">
+                  <div><span className="text-gray-400">Name:</span> {preprocessedData.entities.name}</div>
+                  <div>
+                    <span className="text-gray-400">Email:</span>{' '}
+                    {Array.isArray(preprocessedData.entities.email) 
+                      ? preprocessedData.entities.email.join(', ')
+                      : preprocessedData.entities.email || 'N/A'}
+                  </div>
+                  <div><span className="text-gray-400">Phone:</span> {preprocessedData.entities.phone}</div>
+                  <div><span className="text-gray-400">Skills:</span> {preprocessedData.entities.skills.join(', ')}</div>
+                  <div className="text-gray-400">Education:</div>
+                  <div className="pl-4">
+                    {preprocessedData.entities.education.map((edu, index) => (
+                      <div key={index} className="mb-1">
+                        {[
+                          edu.degree && `${edu.degree}`,
+                          edu.specialization && `in ${edu.specialization}`,
+                          edu.institution && `from ${edu.institution}`,
+                          edu.location && `(${edu.location})`,
+                          edu.graduation_date || edu.year
+                        ].filter(Boolean).join(' ')}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             {error && (
               <p className="mt-2 text-red-400 text-sm">{error}</p>
             )}
@@ -249,7 +323,21 @@ export default function CVScoring() {
               placeholder="Select a job position or enter custom job description..."
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
+              disabled={isProcessingJob}
             />
+            {isProcessingJob && (
+              <div className="mt-2 text-blue-400">
+                <span className="animate-pulse">Extracting requirements...</span>
+              </div>
+            )}
+            {jobAnalysis && (
+              <div className="mt-4 text-white">
+                <h3 className="font-semibold mb-2">Analysis:</h3>
+                <pre className="whitespace-pre-wrap text-sm bg-gray-700 p-2 rounded">
+                  {JSON.stringify(jobAnalysis, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
 
