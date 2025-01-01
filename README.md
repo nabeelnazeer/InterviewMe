@@ -69,10 +69,27 @@ Ensure the following tools are installed on your system:
 Clone the project to your local machine:
 
 ```bash
-git clone <your-repository-url>
+git [clone <your-repository-url>](https://github.com/nabeelnazeer/InterviewMe)
 cd <your-repository>
 ```
+## Install Go Dependencies
+```bash
+go mod tidy
+```
+## Install Node.js Dependencies
+```bash
+npm install
+npm install next
+```
+## Environment Variables
 
+Create a .env file in the root directory and include the following:
+```bash
+HUGGING_FACE_API_KEY=your_hugging_face_api_key
+GEMINI_API_KEY=your_gemini_api_key
+BASE_URL=/api
+
+```
 ---
 
 
