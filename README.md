@@ -19,7 +19,7 @@ Developed an intelligent system that evaluates and scores resumes against job de
 
 **Languages:**
 <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-    <img src="https://golang.org/lib/godoc/images/go-logo-blue.svg" alt="Go" height="40"/>
+    <img src="https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white" alt="Go" height="40"/>
     <img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/javascript/javascript-original.svg" alt="JavaScript" height="40"/>
     <img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/html5/html5-original.svg" alt="HTML5" height="40"/>
     <img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/css3/css3-original.svg" alt="CSS3" height="40"/>
