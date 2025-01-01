@@ -45,16 +45,33 @@ Developed an intelligent system that evaluates and scores resumes against job de
 
 ## Run
 
-Clone the repo
-install Go latest version 
-intsall packages on go.mod
-install next.js
-npm intsall
-create a .env file
-inside .env include  HUGGING_FACE_API_KEY , GEMINI_API_KEY, BASE_URL=/api
+# 🚀 Project Setup Guide
 
-then run  air on backend
-and npm run dev on frontend
+A step-by-step guide to set up and run your project seamlessly.
+
+---
+
+## 📚 Prerequisites
+
+Ensure the following tools are installed on your system:
+
+- [Go (latest version)](https://go.dev/doc/install)  
+- [Node.js (latest version)](https://nodejs.org/)  
+- [npm (Node Package Manager)](https://www.npmjs.com/)  
+- [Next.js](https://nextjs.org/docs/getting-started/installation)  
+
+---
+
+## 🛠️ Installation Steps
+
+### 1. Clone the Repository
+
+Clone the project to your local machine:
+
+```bash
+git clone <your-repository-url>
+cd <your-repository>
+
 ---
 
 
