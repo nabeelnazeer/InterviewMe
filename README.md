@@ -71,6 +71,7 @@ Clone the project to your local machine:
 ```bash
 git clone <your-repository-url>
 cd <your-repository>
+```
 
 ---
 
