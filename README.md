@@ -38,8 +38,8 @@ Developed an intelligent system that evaluates and scores resumes against job de
         <p>Go Fiber</p>
     </div>
     <div style="text-align: center;">
-        <img src="https://raw.githubusercontent.com/cosmtrek/air/master/air_logo.png" alt="Go Air" height="40"/>
-        <p>Go Air ☁️</p>
+        <img ☁️ alt="Go Air" height="40"/>
+        <p>Go Air </p>
     </div>
 </div>
 
