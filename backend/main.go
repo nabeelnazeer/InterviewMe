@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"os"
 
 	"interviewme/handlers"
@@ -35,26 +34,22 @@ func main() {
 		panic("Could not create uploads directory")
 	}
 
-	// Parse base URL and get path component
-	baseURL := "/"
-	if urlStr := os.Getenv("BASE_URL"); urlStr != "" {
-		if parsedURL, err := url.Parse(urlStr); err == nil {
-			baseURL = parsedURL.Path
-		}
-	}
+	// Set the base URL explicitly to /api
+	baseURL := "/api"
 
-	// Setup routes with cleaned baseURL
+	// Setup routes with baseURL prefix
 	app.Get(baseURL+"/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
 	app.Post(baseURL+"/upload", handlers.UploadFile)
 	app.Post(baseURL+"/preprocess", handlers.PreprocessResume)
-	app.Post(baseURL+"/preprocess-job", handlers.PreprocessJobDescription) // Existing route
+	app.Post(baseURL+"/preprocess-job", handlers.PreprocessJobDescription)
+	app.Post(baseURL+"/score-resume", handlers.ScoreResume)
 	app.Delete(baseURL+"/delete", handlers.DeleteFile)
 
-	// Add new route for testing Gemini
-	// app.Get(baseURL+"/test-gemini", handlers.TestGemini)
+	app.Post(baseURL+"/score", handlers.ScoreResume)
+	app.Post(baseURL+"/clear", handlers.ClearFiles)
 
 	port := ":8080"
 	println("Server running on port", port)

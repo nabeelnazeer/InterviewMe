@@ -1,7 +1,7 @@
 'use client';
-import { useState, useRef } from 'react';
-import { FiUpload, FiTrash2, FiCpu } from 'react-icons/fi';
-import { FaCode, FaDatabase, FaCloud, FaMobile, FaDesktop, FaRobot, FaChartLine, FaShieldAlt, FaCuttlefish } from 'react-icons/fa';
+import { useState, useRef, useEffect } from 'react';
+import { FiUpload, FiTrash2 } from 'react-icons/fi';
+import { FaCode, FaDatabase, FaCloud, FaMobile, FaDesktop, FaRobot, FaChartLine, FaCuttlefish } from 'react-icons/fa';
 
 const predefinedJobs = [
   {
@@ -35,8 +35,73 @@ Requirements:
     title: 'Backend Developer',
     icon: FaDatabase,
     color: '#6366F1',
-    description: `Seeking a Backend Developer with strong Python/Node.js skills and experience with REST APIs, 
-    database design, and server architecture. Knowledge of microservices and cloud platforms preferred.`
+    description: `# **Job Title:** Backend Developer  
+
+**Location:** [Remote/On-Site/Hybrid]  
+**Company:** [Company Name]  
+**Employment Type:** [Full-time/Part-time/Contract]  
+**Experience Level:** [Junior/Mid-Level/Senior]  
+
+---
+
+## **About Us:**  
+[Company Name] is a *[brief company description, e.g., leading tech company specializing in SaaS solutions for businesses worldwide]*. We are passionate about building scalable, high-performance applications that deliver exceptional user experiences.  
+
+---
+
+## **Role Overview:**  
+We are seeking a skilled **Backend Developer** to join our dynamic development team. In this role, you will be responsible for designing, implementing, and maintaining robust backend systems that power our web and mobile applications.  
+
+---
+
+## **Key Responsibilities:**  
+- Design, develop, and maintain server-side logic, ensuring high performance and responsiveness to API requests.  
+- Develop and maintain **RESTful** and **GraphQL APIs**.  
+- Optimize backend processes for scalability, reliability, and efficiency.  
+- Collaborate with front-end developers, product managers, and other team members to deliver seamless integrations.  
+- Manage databases, including schema design, query optimization, and data integrity.  
+- Write clean, well-documented, and reusable code following industry best practices.  
+- Implement security and data protection protocols.  
+- Perform debugging, troubleshooting, and root cause analysis of production issues.  
+- Participate in code reviews and knowledge-sharing sessions.  
+
+---
+
+## **Required Skills and Qualifications:**  
+- Proficiency in backend programming languages such as **Python (Django/Flask)**, **Node.js (Express.js)**, **Java (Spring Boot)**, or **GoLang**.  
+- Experience with database technologies such as **MySQL**, **PostgreSQL**, **MongoDB**, or **Redis**.  
+- Familiarity with cloud platforms such as **AWS**, **Azure**, or **Google Cloud Platform (GCP)**.  
+- Strong understanding of **RESTful APIs** and **microservices architecture**.  
+- Proficiency in version control tools like **Git**.  
+- Knowledge of **CI/CD pipelines** and deployment automation.  
+- Solid understanding of security best practices and authentication mechanisms (e.g., **OAuth**, **JWT**).  
+- Strong problem-solving and analytical skills.  
+- Good communication and teamwork skills.  
+
+---
+
+## **Nice-to-Have:**  
+- Experience with containerization tools like **Docker** and orchestration tools like **Kubernetes**.  
+- Familiarity with message brokers like **RabbitMQ** or **Kafka**.  
+- Knowledge of **GraphQL APIs**.  
+- Prior experience with performance testing and monitoring tools.  
+
+---
+
+## **Benefits:**  
+- Competitive salary and performance-based incentives.  
+- Flexible working hours and remote work options.  
+- Health insurance and wellness programs.  
+- Opportunities for professional growth and development.  
+- Collaborative and inclusive work culture.  
+
+---
+
+## **How to Apply:**  
+Submit your **resume** and a **cover letter** explaining why you're the perfect fit for this role to **[email@example.com]** or apply directly on our website: **[company website/careers page]**.  
+
+We look forward to hearing from you! 🚀  
+`
   },
   {
     id: 'cloud',
@@ -100,6 +165,9 @@ export default function CVScoring() {
   const [jobAnalysis, setJobAnalysis] = useState(null);
   const [isPreprocessing, setIsPreprocessing] = useState(false);
   const [preprocessedData, setPreprocessedData] = useState(null);
+  const [scoringResults, setScoringResults] = useState(null);
+  const [isScoring, setIsScoring] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const aiModels = [
     { id: 'gpt4', name: 'GPT-4 Analysis', color: '#10B981' },
@@ -255,6 +323,84 @@ export default function CVScoring() {
     }
   };
 
+  const handleScore = async () => {
+    if (!uploadedCV || !jobAnalysis) {
+      setError('Please upload a CV and select a job description first');
+      return;
+    }
+
+    setIsScoring(true);
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8080/api/score-resume', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resume_id: preprocessedData.id,
+          job_id: jobAnalysis.id
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to score CV');
+      }
+
+      const results = await response.json();
+      
+      // Store the raw scores directly without parsing
+      setScoringResults({
+        overall_score: Math.round(results.overall_score),
+        skills_match: Math.round(results.skills_match),
+        experience_match: Math.round(results.experience_match),
+        education_match: Math.round(results.education_match),
+        detailed_scores: Object.fromEntries(
+          Object.entries(results.detailed_scores || {}).map(([key, value]) => [key, Math.round(value)])
+        ),
+        feedback: results.feedback || []
+      });
+
+    } catch (err) {
+      setError('Failed to score CV: ' + err.message);
+    } finally {
+      setIsScoring(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setIsClearing(true);
+    try {
+      const response = await fetch('http://localhost:8080/api/clear', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear files');
+      }
+
+      // Reset all states
+      setUploadedCV(null);
+      setJobDescription('');
+      setSelectedJob(null);
+      setJobAnalysis(null);
+      setPreprocessedData(null);
+      setScoringResults(null);
+      setError(null);
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+    } catch (err) {
+      setError('Failed to clear files: ' + err.message);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   const RequirementsList = ({ title, items, color }) => (
     items && items.length > 0 && (
       <div className="mb-3">
@@ -317,10 +463,128 @@ export default function CVScoring() {
     )
   );
 
+  const ScoringResults = ({ results }) => {
+    if (!results) return null;
+
+    const mainScores = [
+      { label: 'Overall Score', value: results.overall_score, color: '#10B981' },
+      { label: 'Skills Match', value: results.skills_match, color: '#6366F1' },
+      { label: 'Experience', value: results.experience_match, color: '#EC4899' },
+      { label: 'Education', value: results.education_match, color: '#F59E0B' }
+    ];
+
+    const detailedScores = Object.entries(results.detailed_scores || {}).map(([key, value]) => ({
+      label: key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+      value: value,
+      color: '#8B5CF6'
+    }));
+
+    return (
+      <div className="bg-gray-800 rounded-xl p-6 mt-6">
+        <h3 className="text-xl font-bold text-white mb-6">Analysis Results</h3>
+        
+        {/* Main Scores with Animation */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {mainScores.map((score, index) => (
+            <div 
+              key={index}
+              className="bg-gray-700 rounded-lg p-4 text-center transform transition-all duration-500 hover:scale-105"
+              style={{ 
+                borderLeft: `4px solid ${score.color}`,
+                animation: `fadeIn 0.5s ease-out ${index * 0.1}s forwards`,
+                opacity: 0
+              }}
+            >
+              <div className="text-2xl font-bold text-white">
+                {score.value}%
+              </div>
+              <div className="text-sm text-gray-400">{score.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Detailed Scores with Animation */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {detailedScores.map((score, index) => (
+            <div 
+              key={index}
+              className="bg-gray-700 rounded-lg p-3 text-center transform transition-all duration-500 hover:scale-105"
+              style={{ 
+                borderTop: `4px solid ${score.color}`,
+                animation: `fadeIn 0.5s ease-out ${(index + 4) * 0.1}s forwards`,
+                opacity: 0
+              }}
+            >
+              <div className="text-xl font-bold text-white">
+                {score.value}%
+              </div>
+              <div className="text-xs text-gray-400">{score.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Feedback Section with Animation */}
+        {results.feedback && results.feedback.length > 0 && (
+          <div className="mt-6" style={{ animation: 'fadeIn 0.5s ease-out 0.8s forwards', opacity: 0 }}>
+            <h4 className="text-lg font-semibold text-white mb-3">Improvement Areas</h4>
+            <div className="space-y-2">
+              {results.feedback.map((item, index) => (
+                <div 
+                  key={index}
+                  className="bg-gray-700 p-3 rounded-lg text-gray-300 text-sm transform transition-all duration-500 hover:scale-[1.02]"
+                  style={{ 
+                    borderLeft: '4px solid #F59E0B',
+                    animation: `slideIn 0.5s ease-out ${index * 0.1 + 0.9}s forwards`,
+                    opacity: 0,
+                    transform: 'translateX(-20px)'
+                  }}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Add this style block at the end of your component before the final export
+  const styles = `
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideIn {
+      from { 
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to { 
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  `;
+
+  // Add this right before the final return statement
+  useEffect(() => {
+    // Inject the styles
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = styles;
+    document.head.appendChild(styleSheet);
+    return () => {
+      document.head.removeChild(styleSheet);
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gray-900 p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-white mb-8 background-blur">InterviewMe- CV-Score Module</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <h1 className="text-4xl font-bold text-white">
+          CV Score Analysis
+          <span className="text-green-500">.</span>
+        </h1>
         
         {/* Job Selection Section */}
         <div className="mb-8">
@@ -460,54 +724,37 @@ export default function CVScoring() {
           </div>
         </div>
 
-        {/* AI Models Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {aiModels.map((model) => (
-            <div
-              key={model.id}
-              className="bg-gray-800 p-6 rounded-lg border-2 border-opacity-50 transition-all hover:border-opacity-100"
-              style={{ borderColor: model.color }}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-white flex items-center">
-                  <FiCpu className="mr-2" style={{ color: model.color }} />
-                  {model.name}
-                </h3>
-              </div>
-
-              {uploadedCV && (
-                <button
-                  onClick={() => processWithModel(model.id)}
-                  disabled={processingModels[model.id]}
-                  className="w-full py-2 px-4 rounded-lg text-white font-medium transition-all"
-                  style={{
-                    backgroundColor: processingModels[model.id] ? '#374151' : model.color,
-                    opacity: processingModels[model.id] ? 0.7 : 1
-                  }}
-                >
-                  {processingModels[model.id] ? 'Processing...' : 'Analyze CV'}
-                </button>
-              )}
-
-              {modelScores[model.id] && (
-                <div className="mt-4 space-y-2">
-                  {Object.entries(modelScores[model.id]).map(([key, value]) => (
-                    <div key={key} className="flex justify-between items-center">
-                      <span className="text-gray-300 capitalize">{key.replace('_', ' ')}</span>
-                      <span className="text-white font-semibold">{value}%</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
         {error && (
           <div className="mt-4 p-4 bg-red-900/50 border border-red-500 rounded-lg text-red-200">
             {error}
           </div>
         )}
+
+        {/* Add Score and Clear buttons */}
+        <div className="flex gap-4 mt-8">
+          <button
+            onClick={handleScore}
+            disabled={!uploadedCV || !jobAnalysis || isScoring}
+            className={`px-6 py-2 rounded-lg text-white font-medium transition-all duration-300 ${
+              !uploadedCV || !jobAnalysis || isScoring
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 hover:scale-105'
+            }`}
+          >
+            {isScoring ? 'Analyzing...' : 'Score CV'}
+          </button>
+
+          <button
+            onClick={handleClear}
+            disabled={isClearing}
+            className="px-6 py-2 rounded-lg text-white font-medium bg-red-600 hover:bg-red-700"
+          >
+            {isClearing ? 'Clearing...' : 'Clear All Files'}
+          </button>
+        </div>
+
+        {/* Add Scoring Results component */}
+        <ScoringResults results={scoringResults} />
       </div>
     </div>
   );

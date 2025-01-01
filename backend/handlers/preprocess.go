@@ -14,16 +14,19 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/generative-ai-go/genai"
+	"github.com/jdkato/prose/v2"
 	"google.golang.org/api/option"
 )
 
 // PreprocessedData represents the extracted data from the resume.
 type PreprocessedData struct {
-	Text      string            `json:"text"`
-	Entities  ExtractedEntities `json:"entities"`
-	Skills    []string          `json:"skills"`
-	Education []string          `json:"education"`
-	ID        string            `json:"id"` // Add this field
+	Text            string            `json:"text"`
+	Entities        ExtractedEntities `json:"entities"`
+	Skills          []string          `json:"skills"`
+	Education       []string          `json:"education"`
+	ID              string            `json:"id"` // Add this field
+	TechnicalSkills []string          `json:"technical_skills"`
+	SoftSkills      []string          `json:"soft_skills"`
 }
 
 // Update ExtractedEntities struct to match the actual response format
@@ -138,12 +141,6 @@ func PreprocessResume(c *fiber.Ctx) error {
 	// Generate a unique ID for the resume
 	resumeID := fmt.Sprintf("resume_%d", time.Now().Unix())
 
-	// Save processed text with the new function
-	err = SaveProcessedText("resume", processedText, resumeID)
-	if err != nil {
-		log.Printf("Error saving resume text: %v", err)
-	}
-
 	// Extract entities using Gemini API
 	entities, err := extractEntitiesWithGemini(processedText)
 	if err != nil {
@@ -152,17 +149,23 @@ func PreprocessResume(c *fiber.Ctx) error {
 		})
 	}
 
-	// Extract skills and education using Random Forest models
-	skills := extractSkillsWithModel(processedText)
-	education := extractEducationWithModel(processedText)
+	// Validate and clean extracted entities
+	validateExtractedEntities(&entities)
 
-	// Create response
+	// Save processed text with entities
+	err = SaveProcessedText("resume", processedText, resumeID, entities)
+	if err != nil {
+		log.Printf("Error saving resume text: %v", err)
+	}
+
+	// Create response with categorized skills
 	result := PreprocessedData{
-		Text:      processedText,
-		Entities:  entities,
-		Skills:    skills,
-		Education: education,
-		ID:        resumeID, // Add this field to PreprocessedData struct
+		Text:            processedText,
+		Entities:        entities,
+		TechnicalSkills: filterTechnicalSkills(entities.Skills),
+		SoftSkills:      filterSoftSkills(entities.Skills),
+		Education:       extractEducationDetails(entities.Education),
+		ID:              resumeID, // Add this field to PreprocessedData struct
 	}
 
 	return c.JSON(result)
@@ -181,7 +184,36 @@ func preprocessText(text string) string {
 		}
 		return r
 	}, text)
-	return text
+
+	// Add NLP preprocessing
+	doc, _ := prose.NewDocument(text)
+
+	// Tokenization and lemmatization
+	var processed []string
+	for _, token := range doc.Tokens() {
+		processed = append(processed, token.Text)
+	}
+
+	// Remove stopwords
+	processed = removeStopwords(processed)
+
+	return strings.Join(processed, " ")
+}
+
+func removeStopwords(tokens []string) []string {
+	stopwords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true,
+		"or": true, "but": true, "in": true, "on": true,
+		// Add more stopwords...
+	}
+
+	var filtered []string
+	for _, token := range tokens {
+		if !stopwords[strings.ToLower(token)] {
+			filtered = append(filtered, token)
+		}
+	}
+	return filtered
 }
 
 // Define structs to match Gemini's response structure
@@ -236,10 +268,14 @@ func extractEntitiesWithGemini(text string) (ExtractedEntities, error) {
 1. Name
 2. Email
 3. Phone
-4. Skills
-5. Education
+4. Technical Skills (programming languages, tools, technologies)
+5. Soft Skills (leadership, communication, etc.)
+6. Education (with degree, institution, year, specialization)
 
-Provide the output in JSON format with the keys: name, email, phone, skills, education.
+Provide the output in JSON format with the keys: 
+name, email, phone, technical_skills, soft_skills, education.
+Each skill type should be an array of strings.
+Education should include degree, institution, year, location, specialization.
 
 Text: ` + text
 
@@ -295,6 +331,25 @@ Text: ` + text
 	if skillsRaw, ok := rawResponse["skills"].([]interface{}); ok {
 		entities.Skills = make([]string, 0, len(skillsRaw))
 		for _, skill := range skillsRaw {
+			if skillStr, ok := skill.(string); ok {
+				entities.Skills = append(entities.Skills, skillStr)
+			}
+		}
+	}
+
+	// Update parsing to handle different skill types
+	if techSkills, ok := rawResponse["technical_skills"].([]interface{}); ok {
+		entities.Skills = make([]string, 0, len(techSkills))
+		for _, skill := range techSkills {
+			if skillStr, ok := skill.(string); ok {
+				entities.Skills = append(entities.Skills, skillStr)
+			}
+		}
+	}
+
+	// Add soft skills extraction
+	if softSkills, ok := rawResponse["soft_skills"].([]interface{}); ok {
+		for _, skill := range softSkills {
 			if skillStr, ok := skill.(string); ok {
 				entities.Skills = append(entities.Skills, skillStr)
 			}
@@ -376,6 +431,41 @@ func extractEducationWithModel(text string) []string {
 	return []string{}
 }
 
+// Update SaveProcessedText to include skills categorization
+func SaveProcessedText(textType string, text string, id string, entities ExtractedEntities) error {
+	data := TextData{
+		ProcessedText: text,
+		Timestamp:     time.Now(),
+		Type:          textType,
+		ID:            id,
+		Entities:      entities,
+	}
+
+	// Add categorized skills if they exist
+	if len(entities.Skills) > 0 {
+		data.TechnicalSkills = filterTechnicalSkills(entities.Skills)
+		data.SoftSkills = filterSoftSkills(entities.Skills)
+	}
+
+	// Create directory if it doesn't exist
+	outputDir := filepath.Join("processed_texts", textType)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+
+	// Create filename with type and ID
+	filename := fmt.Sprintf("%s_%s.json", textType, id)
+	filePath := filepath.Join(outputDir, filename)
+
+	// Marshal data to JSON
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, jsonData, 0644)
+}
+
 // PreprocessJobDescription handles job description preprocessing
 func PreprocessJobDescription(c *fiber.Ctx) error {
 	var data struct {
@@ -394,9 +484,10 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	// Generate a unique ID for the job description
 	jobID := fmt.Sprintf("job_%d", time.Now().Unix())
 
-	// Save processed text
-	err = SaveProcessedText("job", processedText, jobID)
-	if err != nil {
+	// Create empty entities for job description
+	emptyEntities := ExtractedEntities{}
+
+	if err := SaveProcessedText("job", processedText, jobID, emptyEntities); err != nil {
 		log.Printf("Error saving job description: %v", err)
 	}
 
@@ -480,9 +571,48 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 		requirements.Education.Qualifications = []string{}
 	}
 
+	// Categorize skills
+	technicalSkills := filterTechnicalSkills(requirements.Skills)
+	softSkills := filterSoftSkills(requirements.Skills)
+
+	// Create a complete job description data structure
+	jobData := TextData{
+		ProcessedText:   processedText,
+		Timestamp:       time.Now(),
+		Type:            "job",
+		ID:              jobID,
+		Requirements:    requirements,
+		SoftSkills:      softSkills,
+		TechnicalSkills: technicalSkills,
+	}
+
+	// Save the complete job data
+	outputDir := filepath.Join("processed_texts", "job")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to create directory",
+		})
+	}
+
+	filename := fmt.Sprintf("job_%s.json", jobID)
+	filePath := filepath.Join(outputDir, filename)
+
+	jsonData, err := json.Marshal(jobData)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to marshal job data",
+		})
+	}
+
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to save job data",
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"requirements": requirements,
-		"id":           jobID, // Include the ID in the response
+		"id":           jobID,
 	})
 }
 
@@ -494,4 +624,42 @@ func getString(m map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+// Add new function to validate extracted entities
+func validateExtractedEntities(entities *ExtractedEntities) {
+	// Ensure skills arrays are initialized
+	if entities.Skills == nil {
+		entities.Skills = []string{}
+	}
+
+	// Ensure education array is initialized
+	if entities.Education == nil {
+		entities.Education = []Education{}
+	}
+
+	// Deduplicate skills
+	skillsMap := make(map[string]bool)
+	var uniqueSkills []string
+	for _, skill := range entities.Skills {
+		if !skillsMap[strings.ToLower(skill)] {
+			skillsMap[strings.ToLower(skill)] = true
+			uniqueSkills = append(uniqueSkills, skill)
+		}
+	}
+	entities.Skills = uniqueSkills
+}
+
+// Add new function to extract education details
+func extractEducationDetails(education []Education) []string {
+	var details []string
+	for _, edu := range education {
+		detail := fmt.Sprintf("%s in %s from %s (%s)",
+			edu.Degree,
+			edu.Specialization,
+			edu.Institution,
+			edu.Year)
+		details = append(details, detail)
+	}
+	return details
 }

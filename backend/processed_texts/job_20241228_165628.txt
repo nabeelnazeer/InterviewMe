@@ -1,1 +1,0 @@
-looking for a cloud engineer with aws/azure expertise, infrastructure as code experience, and strong devops practices. knowledge of containerization and orchestration required.
