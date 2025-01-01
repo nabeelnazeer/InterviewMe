@@ -37,11 +37,12 @@ Developed an intelligent system that evaluates and scores resumes against job de
         <img src="https://gofiber.io/assets/images/logo.svg" alt="Go Fiber" height="40"/>
         <p>Go Fiber</p>
     </div>
-    <div style="text-align: center;">
-        <img ☁️ alt="Go Air" height="40"/>
-        <p>Go Air </p>
+    <div style="text-align: center; font-size: 40px;">
+        ☁️
+        <p>Go Air</p>
     </div>
 </div>
+
 
 
 **Tools:**
