@@ -5,7 +5,7 @@
 ## Basic Details
 
 
----
+
 
 ## Project Description
 
@@ -25,12 +25,24 @@ Developed an intelligent system that evaluates and scores resumes against job de
     <img src="https://raw.githubusercontent.com/devicons/devicon/master/icons/css3/css3-original.svg" alt="CSS3" height="40"/>
 </div>
 
-**Frameworks/Libraries:**
+
+## **Frameworks/Libraries:**
+
 <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-    <img src="https://nextjs.org/static/favicon/favicon-32x32.png" alt="Next.js Logo" height="40"/>
-    <img src="https://gofiber.io/assets/images/logo.svg" alt="Go Fiber" height="40"/>
-    <img src="https://raw.githubusercontent.com/cosmtrek/air/master/air_logo.png" alt="Go Air" height="40"/>
+    <div style="text-align: center;">
+        <img src="https://nextjs.org/static/favicon/favicon-32x32.png" alt="Next.js Logo" height="40"/>
+        <p>Next.js</p>
+    </div>
+    <div style="text-align: center;">
+        <img src="https://gofiber.io/assets/images/logo.svg" alt="Go Fiber" height="40"/>
+        <p>Go Fiber</p>
+    </div>
+    <div style="text-align: center;">
+        <img src="https://raw.githubusercontent.com/cosmtrek/air/master/air_logo.png" alt="Go Air" height="40"/>
+        <p>Go Air ☁️</p>
+    </div>
 </div>
+
 
 **Tools:**
 <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
@@ -49,7 +61,6 @@ Developed an intelligent system that evaluates and scores resumes against job de
 
 A step-by-step guide to set up and run your project seamlessly.
 
----
 
 ## 📚 Prerequisites
 
@@ -60,7 +71,7 @@ Ensure the following tools are installed on your system:
 - [npm (Node Package Manager)](https://www.npmjs.com/)  
 - [Next.js](https://nextjs.org/docs/getting-started/installation)  
 
----
+
 
 ## 🛠️ Installation Steps
 
@@ -90,7 +101,7 @@ GEMINI_API_KEY=your_gemini_api_key
 BASE_URL=/api
 
 ```
----
+
 
 
 ---
