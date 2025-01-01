@@ -27,7 +27,7 @@ Developed an intelligent system that evaluates and scores resumes against job de
 
 **Frameworks/Libraries:**
 <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-    <img src="https://assets.vercel.com/image/upload/v1662130559/nextjs/favicon.ico" alt="Next.js" height="40"/>
+    <img src="https://nextjs.org/static/favicon/favicon-32x32.png" alt="Next.js Logo" height="40"/>
     <img src="https://gofiber.io/assets/images/logo.svg" alt="Go Fiber" height="40"/>
     <img src="https://raw.githubusercontent.com/cosmtrek/air/master/air_logo.png" alt="Go Air" height="40"/>
 </div>
