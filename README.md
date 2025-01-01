@@ -112,13 +112,13 @@ BASE_URL=/api
 ### Screenshots
 
 ![Popup Interface](demo_folder/shot1.png)  
-*Model when no smile: "huh"*
+
 
 ![Weird Expression](demo_folder/shot2.png)  
-*Model with weird expression: "nahuh"*
+
 
 ![Perfect Smile](demo_folder/shot3.png)  
-*"Bro, that smile: 10/10!"*
+
 
 
 ## Team Contributions
