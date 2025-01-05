@@ -15,7 +15,7 @@ func main() {
 	// Load environment variables from .env file
 	err := godotenv.Load()
 	if err != nil {
-		panic("Error loading .env file")
+		panic(" jamalu Error loading .env file")
 	}
 
 	app := fiber.New()
