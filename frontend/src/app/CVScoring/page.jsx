@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { FiUpload, FiTrash2 } from 'react-icons/fi';
 import { FaCode, FaDatabase, FaCloud, FaMobile, FaDesktop, FaRobot, FaChartLine, FaCuttlefish } from 'react-icons/fa';
+import { useRouter } from 'next/navigation';
 
 const predefinedJobs = [
   {
@@ -168,6 +169,7 @@ export default function CVScoring() {
   const [scoringResults, setScoringResults] = useState(null);
   const [isScoring, setIsScoring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const router = useRouter();
 
   const aiModels = [
     { id: 'gpt4', name: 'GPT-4 Analysis', color: '#10B981' },
@@ -333,6 +335,8 @@ export default function CVScoring() {
     setError(null);
 
     try {
+      console.log('Starting CV scoring process...');
+
       const response = await fetch('http://localhost:8080/api/score-resume', {
         method: 'POST',
         headers: {
@@ -345,26 +349,30 @@ export default function CVScoring() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to score CV');
+        throw new Error(`Score API failed: ${response.status} ${response.statusText}`);
       }
 
       const results = await response.json();
+      console.log('Received scoring results:', results);
       
-      // Store the raw scores directly without parsing
-      setScoringResults({
-        overall_score: Math.round(results.overall_score),
-        skills_match: Math.round(results.skills_match),
-        experience_match: Math.round(results.experience_match),
-        education_match: Math.round(results.education_match),
-        detailed_scores: Object.fromEntries(
-          Object.entries(results.detailed_scores || {}).map(([key, value]) => [key, Math.round(value)])
-        ),
-        feedback: results.feedback || []
-      });
+      // Store in localStorage and verify it was stored
+      localStorage.setItem('scoringResults', JSON.stringify({
+        scores: results,
+        resumeData: preprocessedData,
+        jobData: jobAnalysis
+      }));
+
+      const stored = localStorage.getItem('scoringResults');
+      if (!stored) {
+        throw new Error('Failed to store results in localStorage');
+      }
+
+      console.log('Navigating to analysis page...');
+      await router.push('/analysis');
 
     } catch (err) {
-      setError('Failed to score CV: ' + err.message);
-    } finally {
+      console.error('Scoring error:', err);
+      setError(`Failed to score CV: ${err.message}`);
       setIsScoring(false);
     }
   };

@@ -25,6 +25,20 @@ type ScoreResponse struct {
 	EducationMatch  float64            `json:"education_match"`
 	DetailedScores  map[string]float64 `json:"detailed_scores"`
 	Feedback        []string           `json:"feedback"`
+	MatchedSkills   SkillMatches       `json:"matched_skills"`
+}
+
+// Add new type for skill matches
+type SkillMatches struct {
+	ExactMatches   []string       `json:"exact_matches"`
+	PartialMatches []PartialMatch `json:"partial_matches"`
+	MissingSkills  []string       `json:"missing_skills"`
+}
+
+type PartialMatch struct {
+	JobSkill    string  `json:"job_skill"`
+	ResumeSkill string  `json:"resume_skill"`
+	Similarity  float64 `json:"similarity"`
 }
 
 // Remove TextData struct as it's now in models.go
@@ -131,6 +145,18 @@ func ScoreResume(c *fiber.Ctx) error {
 			"qualifications":   educationScore,
 		},
 		Feedback: feedback,
+	}
+
+	// Calculate skill matches
+	exactMatches, partialMatches, missingSkills := analyzeSkillMatches(
+		resumeData.Entities.Skills,
+		jobData.Requirements.Skills,
+	)
+
+	scoreResponse.MatchedSkills = SkillMatches{
+		ExactMatches:   exactMatches,
+		PartialMatches: partialMatches,
+		MissingSkills:  missingSkills,
 	}
 
 	// Log the final score response
@@ -916,4 +942,51 @@ func isStopWord(word string) bool {
 		"at": true, "to": true, "for": true, "with": true, "by": true,
 	}
 	return stopWords[word]
+}
+
+// Add new helper function for analyzing skill matches
+func analyzeSkillMatches(resumeSkills, jobSkills []string) ([]string, []PartialMatch, []string) {
+	var exactMatches []string
+	var partialMatches []PartialMatch
+	var missingSkills []string
+
+	// Convert all skills to lowercase for comparison
+	resumeSkillsLower := make(map[string]string)
+	for _, skill := range resumeSkills {
+		resumeSkillsLower[strings.ToLower(skill)] = skill
+	}
+
+	// Check each job skill
+	for _, jobSkill := range jobSkills {
+		jobSkillLower := strings.ToLower(jobSkill)
+
+		// Check for exact match
+		if _, exists := resumeSkillsLower[jobSkillLower]; exists {
+			exactMatches = append(exactMatches, jobSkill)
+			continue
+		}
+
+		// Check for partial matches
+		bestMatch := ""
+		bestSimilarity := 0.0
+		for resumeSkillLower, originalResumeSkill := range resumeSkillsLower {
+			similarity := wordSimilarity(jobSkillLower, resumeSkillLower)
+			if similarity > wordSimThreshold && similarity > bestSimilarity {
+				bestMatch = originalResumeSkill
+				bestSimilarity = similarity
+			}
+		}
+
+		if bestMatch != "" {
+			partialMatches = append(partialMatches, PartialMatch{
+				JobSkill:    jobSkill,
+				ResumeSkill: bestMatch,
+				Similarity:  bestSimilarity,
+			})
+		} else {
+			missingSkills = append(missingSkills, jobSkill)
+		}
+	}
+
+	return exactMatches, partialMatches, missingSkills
 }
