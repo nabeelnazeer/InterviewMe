@@ -5,16 +5,7 @@ const nextConfig = {
   },
   poweredByHeader: false,
   reactStrictMode: true,
-  pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
-  async redirects() {
-    return [
-      {
-        source: '/',
-        destination: '/cvScoring',
-        permanent: true,
-      },
-    ]
-  },
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx']
 }
 
 module.exports = nextConfig

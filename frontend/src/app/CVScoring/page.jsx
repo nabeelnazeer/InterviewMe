@@ -190,7 +190,7 @@ export default function CVScoring() {
         const uploadFormData = new FormData();
         uploadFormData.append('file', file);
         
-        const uploadResponse = await fetch('http://localhost:8080/api/upload', {
+        const uploadResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/upload`, {
           method: 'POST',
           body: uploadFormData,
         });
@@ -205,7 +205,7 @@ export default function CVScoring() {
         const preprocessFormData = new FormData();
         preprocessFormData.append('resume', file);
         
-        const preprocessResponse = await fetch('http://localhost:8080/api/preprocess', {
+        const preprocessResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preprocess`, {
           method: 'POST',
           body: preprocessFormData,
         });
@@ -233,7 +233,7 @@ export default function CVScoring() {
   const handleDelete = async () => {
     try {
       // Delete the file from server
-      const response = await fetch(`http://localhost:8080/api/delete?filename=${uploadedCV.name}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/delete?filename=${uploadedCV.name}`, {
         method: 'DELETE',
       });
 
@@ -263,7 +263,7 @@ export default function CVScoring() {
     setProcessingModels(prev => ({ ...prev, [modelId]: true }));
     try {
       // Simulate API call to specific model endpoint
-      const response = await fetch(`http://localhost:8080/api/analyze/${modelId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze/${modelId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cv: uploadedCV?.name, jobDescription }),
@@ -287,7 +287,7 @@ export default function CVScoring() {
     
     setIsProcessingJob(true);
     try {
-      const response = await fetch('http://localhost:8080/api/preprocess-job', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preprocess-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description: job.description }),
@@ -342,7 +342,7 @@ export default function CVScoring() {
     try {
       console.log('Starting CV scoring process...');
 
-      const response = await fetch('http://localhost:8080/api/score-resume', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -385,7 +385,7 @@ export default function CVScoring() {
   const handleClear = async () => {
     setIsClearing(true);
     try {
-      const response = await fetch('http://localhost:8080/api/clear', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clear`, {
         method: 'POST',
       });
 

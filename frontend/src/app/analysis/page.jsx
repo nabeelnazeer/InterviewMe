@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';  // Add this import
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 import { FaCheckCircle, FaBriefcase, FaGraduationCap, FaTools, FaChartLine, 
@@ -60,7 +61,7 @@ const AnalysisPage = () => {
     } catch (error) {
       console.error('Error:', error);
       setError('Unable to load analysis data');
-      setTimeout(() => router.push('/cvScoring'), 3000);
+      setTimeout(() => router.push('/CVScoring'), 3000);
     }
   }, [isMounted, router]);
 
@@ -69,14 +70,14 @@ const AnalysisPage = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await axios.post('http://localhost:8080/api/upload', formData, {
+      const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
 
       if (response.data.filename) {
-        setPdfData(`http://localhost:8080/api/pdf/display?filename=${response.data.filename}`);
+        setPdfData(`${process.env.NEXT_PUBLIC_API_URL}/pdf/display?filename=${response.data.filename}`);
       }
     } catch (error) {
       console.error('Error uploading PDF:', error);
@@ -97,7 +98,7 @@ const AnalysisPage = () => {
       
       if (filename) {
         // Just use the filename as stored, which should already include the "upload-" prefix
-        setPdfData(`http://localhost:8080/api/pdf/display?filename=${filename}`);
+        setPdfData(`${process.env.NEXT_PUBLIC_API_URL}/pdf/display?filename=${filename}`);
       } else {
         console.error('No filename found in stored data');
       }
@@ -255,6 +256,16 @@ const AnalysisPage = () => {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="fixed top-4 right-4 z-50 flex space-x-4">
+        {/* Add this button */}
+        <Link
+          href="/"
+          className="px-6 py-3 bg-gray-800/90 hover:bg-purple-600 text-white rounded-lg 
+                    font-semibold transition-all duration-300 flex items-center space-x-2
+                    border border-purple-500 backdrop-blur-sm"
+        >
+          <span>↩ Home</span>
+        </Link>
+        {/* Existing buttons */}
         <button
           onClick={handleViewPDF}
           className="px-6 py-3 bg-gray-800/90 hover:bg-blue-600 text-white rounded-lg 
