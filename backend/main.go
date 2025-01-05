@@ -34,24 +34,21 @@ func main() {
 		panic("Could not create uploads directory")
 	}
 
-	// Set the base URL explicitly to /api
-	baseURL := "/api"
-
-	// Setup routes with baseURL prefix
-	app.Get(baseURL+"/", func(c *fiber.Ctx) error {
+	// Routes without baseURL prefix
+	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
-	app.Post(baseURL+"/upload", handlers.UploadFile)
-	app.Post(baseURL+"/preprocess", handlers.PreprocessResume)
-	app.Post(baseURL+"/preprocess-job", handlers.PreprocessJobDescription)
-	app.Post(baseURL+"/score-resume", handlers.ScoreResume)
-	app.Delete(baseURL+"/delete", handlers.DeleteFile)
+	app.Post("/upload", handlers.UploadFile)
+	app.Post("/preprocess", handlers.PreprocessResume)
+	app.Post("/preprocess-job", handlers.PreprocessJobDescription)
+	app.Post("/score-resume", handlers.ScoreResume)
+	app.Delete("/delete", handlers.DeleteFile)
 
-	app.Get(baseURL+"/pdf/display", handlers.DisplayPDF)
+	app.Get("/pdf/display", handlers.DisplayPDF)
 
-	app.Post(baseURL+"/score", handlers.ScoreResume)
-	app.Post(baseURL+"/clear", handlers.ClearFiles)
+	app.Post("/score", handlers.ScoreResume)
+	app.Post("/clear", handlers.ClearFiles)
 
 	port := ":8080"
 	println("Server running on port", port)
