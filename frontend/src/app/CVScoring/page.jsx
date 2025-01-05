@@ -466,56 +466,66 @@ export default function CVScoring() {
   const ScoringResults = ({ results }) => {
     if (!results) return null;
 
-    const mainScores = [
-      { label: 'Overall Score', value: results.overall_score, color: '#10B981' },
-      { label: 'Skills Match', value: results.skills_match, color: '#6366F1' },
-      { label: 'Experience', value: results.experience_match, color: '#EC4899' },
-      { label: 'Education', value: results.education_match, color: '#F59E0B' }
+    // Separate important scores from other scores
+    const importantScores = [
+      { label: 'Overall Score', value: results.overall_score, color: '#10B981', highlight: true },
+      { label: 'Technical Skills', value: results.detailed_scores.technical_skills, color: '#6366F1', highlight: true },
+      { label: 'Skills Match', value: results.skills_match, color: '#EC4899', highlight: true },
     ];
 
-    const detailedScores = Object.entries(results.detailed_scores || {}).map(([key, value]) => ({
-      label: key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-      value: value,
-      color: '#8B5CF6'
-    }));
+    const otherScores = [
+      { label: 'Experience', value: results.experience_match, color: '#F59E0B' },
+      { label: 'Education', value: results.education_match, color: '#8B5CF6' },
+      ...Object.entries(results.detailed_scores || {})
+        .filter(([key]) => key !== 'technical_skills')
+        .map(([key, value]) => ({
+          label: key.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+          value: value,
+          color: '#8B5CF6'
+        }))
+    ];
 
     return (
       <div className="bg-gray-800 rounded-xl p-6 mt-6">
         <h3 className="text-xl font-bold text-white mb-6">Analysis Results</h3>
         
-        {/* Main Scores with Animation */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {mainScores.map((score, index) => (
+        {/* Important Scores with Enhanced Styling */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {importantScores.map((score, index) => (
             <div 
               key={index}
-              className="bg-gray-700 rounded-lg p-4 text-center transform transition-all duration-500 hover:scale-105"
+              className="bg-gray-700 rounded-lg p-6 text-center transform transition-all duration-500 hover:scale-105 relative overflow-hidden"
               style={{ 
                 borderLeft: `4px solid ${score.color}`,
                 animation: `fadeIn 0.5s ease-out ${index * 0.1}s forwards`,
                 opacity: 0
               }}
             >
-              <div className="text-2xl font-bold text-white">
-                {score.value}%
+              {/* Add highlight effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"/>
+              <div className="relative z-10">
+                <div className="text-3xl font-bold text-white mb-2">
+                  {score.value}%
+                </div>
+                <div className="text-sm text-gray-300 font-semibold">{score.label}</div>
               </div>
-              <div className="text-sm text-gray-400">{score.label}</div>
             </div>
           ))}
         </div>
 
-        {/* Detailed Scores with Animation */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          {detailedScores.map((score, index) => (
+        {/* Other Scores with Regular Styling */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {otherScores.map((score, index) => (
             <div 
               key={index}
-              className="bg-gray-700 rounded-lg p-3 text-center transform transition-all duration-500 hover:scale-105"
+              className="bg-gray-700/50 rounded-lg p-3 text-center"
               style={{ 
                 borderTop: `4px solid ${score.color}`,
-                animation: `fadeIn 0.5s ease-out ${(index + 4) * 0.1}s forwards`,
+                animation: `fadeIn 0.5s ease-out ${(index + importantScores.length) * 0.1}s forwards`,
                 opacity: 0
               }}
             >
-              <div className="text-xl font-bold text-white">
+              <div className="text-xl font-bold text-gray-300">
                 {score.value}%
               </div>
               <div className="text-xs text-gray-400">{score.label}</div>
@@ -523,7 +533,7 @@ export default function CVScoring() {
           ))}
         </div>
 
-        {/* Feedback Section with Animation */}
+        {/* Feedback Section - unchanged */}
         {results.feedback && results.feedback.length > 0 && (
           <div className="mt-6" style={{ animation: 'fadeIn 0.5s ease-out 0.8s forwards', opacity: 0 }}>
             <h4 className="text-lg font-semibold text-white mb-3">Improvement Areas</h4>

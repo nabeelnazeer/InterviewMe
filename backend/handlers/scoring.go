@@ -107,9 +107,13 @@ func ScoreResume(c *fiber.Ctx) error {
 	skillsScore := math.Min(safeFloat64(calculateSkillsMatch(resumeData.Entities.Skills, jobData.Requirements.Skills)*maxScore), maxScore)
 	experienceScore := math.Min(safeFloat64(calculateExperienceMatch(resumeData.Entities, jobData.Requirements)*maxScore), maxScore)
 	educationScore := math.Min(safeFloat64(calculateEducationMatch(resumeData.Entities.Education, jobData.Requirements.Education)*maxScore), maxScore)
+	technicalScore := math.Min(safeFloat64(calculateTechnicalSkillsScore(resumeData, jobData)*maxScore), maxScore)
 
-	// Calculate overall score (weighted average) ensuring it stays within 0-100
-	overallScore := math.Min(safeFloat64(skillsScore*0.4+experienceScore*0.3+educationScore*0.3), maxScore)
+	// Calculate overall score using technical skills instead of education (weighted average)
+	overallScore := math.Min(safeFloat64(
+		skillsScore*0.4+
+			experienceScore*0.3+
+			technicalScore*0.3), maxScore)
 
 	// Generate feedback based on scores
 	feedback := generateFeedback(skillsScore, experienceScore, educationScore, resumeData, jobData)
@@ -122,7 +126,7 @@ func ScoreResume(c *fiber.Ctx) error {
 		ExperienceMatch: experienceScore,
 		EducationMatch:  educationScore,
 		DetailedScores: map[string]float64{
-			"technical_skills": math.Min(safeFloat64(calculateTechnicalSkillsScore(resumeData, jobData)*maxScore), maxScore),
+			"technical_skills": technicalScore,
 			"soft_skills":      math.Min(safeFloat64(softSkillsScore*maxScore), maxScore),
 			"qualifications":   educationScore,
 		},
@@ -157,6 +161,10 @@ func loadTextData(id string, textType string) (*TextData, error) {
 
 // Enhanced calculateSkillsMatch with semantic search
 func calculateSkillsMatch(resumeSkills []string, jobSkills []string) float64 {
+	// Add logging
+	log.Printf("Calculating skills match - Resume Skills: %v", resumeSkills)
+	log.Printf("Calculating skills match - Job Skills: %v", jobSkills)
+
 	if len(jobSkills) == 0 {
 		return 1.0
 	}
@@ -169,6 +177,10 @@ func calculateSkillsMatch(resumeSkills []string, jobSkills []string) float64 {
 	semanticScore := calculateSemanticSimilarity(resumeSkills, jobSkills, semanticModel)
 	keywordScore := calculateKeywordMatch(resumeSkills, jobSkills)
 	entityScore := calculateEntityMatch(resumeSkills, jobSkills, nerModel)
+
+	// Add score logging
+	log.Printf("Skills match scores - Semantic: %.2f, Keyword: %.2f, Entity: %.2f",
+		semanticScore, keywordScore, entityScore)
 
 	// Weighted combination (removing maxScore multiplication as it's applied later)
 	return semanticScore*semanticWeight + keywordScore*keywordWeight + entityScore*entityWeight
@@ -824,22 +836,84 @@ func calculateKeywordMatch(resumeSkills, jobSkills []string) float64 {
 	return matches / float64(len(jobSkills))
 }
 
-// Calculate entity match using NER
+// Simplified entity matching focusing on meaningful comparison
 func calculateEntityMatch(resumeSkills, jobSkills []string, doc *prose.Document) float64 {
 	if len(jobSkills) == 0 {
 		return 1.0
 	}
-	resumeEntities := extractEntities(resumeSkills, doc)
-	jobEntities := extractEntities(jobSkills, doc)
+
+	// Extract meaningful terms from skills
+	resumeTerms := extractMeaningfulTerms(resumeSkills)
+	jobTerms := extractMeaningfulTerms(jobSkills)
+
+	// Calculate direct matches
+	directMatches := calculateDirectMatches(resumeTerms, jobTerms)
+
+	// Calculate fuzzy matches for non-exact matches
+	fuzzyMatches := calculateFuzzyMatches(resumeTerms, jobTerms)
+
+	// Combine scores with weights
+	score := (directMatches * 0.7) + (fuzzyMatches * 0.3)
+	return safeFloat64(score)
+}
+
+func extractMeaningfulTerms(skills []string) []string {
+	var terms []string
+	for _, skill := range skills {
+		// Split compound terms
+		words := strings.Fields(strings.ToLower(skill))
+		// Filter out common stop words
+		for _, word := range words {
+			if !isStopWord(word) && len(word) > 2 {
+				terms = append(terms, word)
+			}
+		}
+	}
+	return terms
+}
+
+func calculateDirectMatches(terms1, terms2 []string) float64 {
+	if len(terms2) == 0 {
+		return 1.0
+	}
 
 	matches := 0.0
-	for _, jobEntity := range jobEntities {
-		for _, resumeEntity := range resumeEntities {
-			if compareEntities(jobEntity, resumeEntity) {
+	for _, term2 := range terms2 {
+		for _, term1 := range terms1 {
+			if term1 == term2 {
 				matches++
 				break
 			}
 		}
 	}
-	return matches / float64(len(jobEntities))
+	return matches / float64(len(terms2))
+}
+
+func calculateFuzzyMatches(terms1, terms2 []string) float64 {
+	if len(terms2) == 0 {
+		return 1.0
+	}
+
+	matches := 0.0
+	for _, term2 := range terms2 {
+		maxSimilarity := 0.0
+		for _, term1 := range terms1 {
+			similarity := wordSimilarity(term1, term2)
+			if similarity > maxSimilarity {
+				maxSimilarity = similarity
+			}
+		}
+		if maxSimilarity > wordSimThreshold {
+			matches += maxSimilarity
+		}
+	}
+	return matches / float64(len(terms2))
+}
+
+func isStopWord(word string) bool {
+	stopWords := map[string]bool{
+		"the": true, "and": true, "or": true, "in": true, "on": true,
+		"at": true, "to": true, "for": true, "with": true, "by": true,
+	}
+	return stopWords[word]
 }
