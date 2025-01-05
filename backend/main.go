@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// Load environment variables from .env file
-	err := godotenv.Load()
+	err := godotenv.Load(".env")
 	if err != nil {
 		panic(" jamalu Error loading .env file")
 	}
