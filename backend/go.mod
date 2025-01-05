@@ -38,6 +38,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mingrammer/commonregex v1.0.1 // indirect
+	github.com/nlpodyssey/spago v1.1.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect

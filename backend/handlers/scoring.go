@@ -19,13 +19,14 @@ import (
 
 // ScoreResponse represents the scoring results
 type ScoreResponse struct {
-	OverallScore    float64            `json:"overall_score"`
-	SkillsMatch     float64            `json:"skills_match"`
-	ExperienceMatch float64            `json:"experience_match"`
-	EducationMatch  float64            `json:"education_match"`
-	DetailedScores  map[string]float64 `json:"detailed_scores"`
-	Feedback        []string           `json:"feedback"`
-	MatchedSkills   SkillMatches       `json:"matched_skills"`
+	OverallScore       float64            `json:"overall_score"`
+	SkillsMatch        float64            `json:"skills_match"`
+	ExperienceMatch    float64            `json:"experience_match"`
+	EducationMatch     float64            `json:"education_match"`
+	DetailedScores     map[string]float64 `json:"detailed_scores"`
+	Feedback           []string           `json:"feedback"`
+	MatchedSkills      SkillMatches       `json:"matched_skills"`
+	SoftSkillsAnalysis SoftSkillsData     `json:"soft_skills_analysis"`
 }
 
 // Add new type for skill matches
@@ -39,6 +40,13 @@ type PartialMatch struct {
 	JobSkill    string  `json:"job_skill"`
 	ResumeSkill string  `json:"resume_skill"`
 	Similarity  float64 `json:"similarity"`
+}
+
+// Add new type for soft skills data
+type SoftSkillsData struct {
+	Score            float64  `json:"score"`
+	ExtractedSkills  []string `json:"extracted_skills"`
+	ExperienceSkills []string `json:"experience_based_skills"`
 }
 
 // Remove TextData struct as it's now in models.go
@@ -132,7 +140,7 @@ func ScoreResume(c *fiber.Ctx) error {
 	// Generate feedback based on scores
 	feedback := generateFeedback(skillsScore, experienceScore, educationScore, resumeData, jobData)
 
-	softSkillsScore := calculateSoftSkillsScore(resumeData, jobData)
+	softSkillsScore, softSkillsData := calculateSoftSkillsScore(resumeData, jobData)
 
 	scoreResponse := ScoreResponse{
 		OverallScore:    overallScore,
@@ -144,7 +152,8 @@ func ScoreResume(c *fiber.Ctx) error {
 			"soft_skills":      math.Min(safeFloat64(softSkillsScore*maxScore), maxScore),
 			"qualifications":   educationScore,
 		},
-		Feedback: feedback,
+		Feedback:           feedback,
+		SoftSkillsAnalysis: softSkillsData,
 	}
 
 	// Calculate skill matches
@@ -407,60 +416,77 @@ func prepareBertInput(resumeText, jobText string) map[string]interface{} {
 }
 
 func calculateTechnicalSkillsScore(resumeData *TextData, jobData *TextData) float64 {
-	techSkills := filterTechnicalSkills(resumeData.Entities.Skills)
-	requiredTechSkills := filterTechnicalSkills(jobData.Requirements.Skills)
+	techSkills := FilterTechnicalSkills(resumeData.Entities.Skills)
+	requiredTechSkills := FilterTechnicalSkills(jobData.Requirements.Skills)
 
 	// Ensure score is between 0 and 1 before maxScore multiplication
 	return math.Min(calculateSkillsMatch(techSkills, requiredTechSkills), 1.0)
 }
 
-func calculateSoftSkillsScore(resumeData *TextData, jobData *TextData) float64 {
+// Modify calculateSoftSkillsScore to return both score and skills
+func calculateSoftSkillsScore(resumeData *TextData, jobData *TextData) (float64, SoftSkillsData) {
 	// Extract soft skills from both resume and job description
 	softSkills := filterSoftSkills(resumeData.Entities.Skills)
 	requiredSoftSkills := filterSoftSkills(jobData.Requirements.Skills)
 
+	// Log extracted soft skills
+	log.Printf("Extracted soft skills from resume: %v", softSkills)
+	log.Printf("Required soft skills from job: %v", requiredSoftSkills)
+
+	// Extract experience-based soft skills
+	expSkills, expScore := extractSoftSkillsFromExperience(resumeData.Entities)
+	log.Printf("Experience-based soft skills: %v", expSkills)
+
 	if len(requiredSoftSkills) == 0 {
-		return 1.0 // Perfect score if no soft skills required
+		return 1.0, SoftSkillsData{
+			Score:            100.0,
+			ExtractedSkills:  softSkills,
+			ExperienceSkills: expSkills,
+		}
 	}
 
-	// Calculate different types of matches
+	// Calculate scores
 	semanticScore := calculateSemanticSimilarity(softSkills, requiredSoftSkills, initSemanticModel())
 	keywordScore := calculateKeywordMatch(softSkills, requiredSoftSkills)
 
-	// Get experience-based soft skills score
-	experienceScore := extractSoftSkillsFromExperience(resumeData.Entities)
-
 	// Weighted combination of scores
-	weightedScore := (semanticScore * 0.4) + (keywordScore * 0.4) + (experienceScore * 0.2)
+	weightedScore := (semanticScore * 0.4) + (keywordScore * 0.4) + (expScore * 0.2)
+	finalScore := math.Min(weightedScore, 1.0)
 
-	// Add the score to detailed scores
-	return math.Min(weightedScore, 1.0)
+	return finalScore, SoftSkillsData{
+		Score:            finalScore * 100,
+		ExtractedSkills:  softSkills,
+		ExperienceSkills: expSkills,
+	}
 }
 
-func filterTechnicalSkills(skills []string) []string {
-	// List of common technical skill keywords
-	technicalKeywords := map[string]bool{
-		"programming": true, "software": true, "development": true,
-		"java": true, "python": true, "go": true, "golang": true,
-		"javascript": true, "react": true, "node": true, "aws": true,
-		"cloud": true, "docker": true, "kubernetes": true, "git": true,
-		"database": true, "sql": true, "nosql": true, "api": true,
+// Update extractSoftSkillsFromExperience to return both score and skills
+func extractSoftSkillsFromExperience(entities ExtractedEntities) ([]string, float64) {
+	softSkillIndicators := map[string]bool{
+		"led": true, "managed": true, "coordinated": true,
+		"collaborated": true, "mentored": true, "trained": true,
+		"facilitated": true, "organized": true, "presented": true,
+		"negotiated": true, "resolved": true, "improved": true,
 	}
 
-	var technical []string
-	for _, skill := range skills {
-		skill = strings.ToLower(skill)
-		for keyword := range technicalKeywords {
-			if strings.Contains(skill, keyword) {
-				technical = append(technical, skill)
+	var extractedSkills []string
+	score := 0.0
+	totalIndicators := float64(len(softSkillIndicators))
+
+	for _, skill := range entities.Skills {
+		skillLower := strings.ToLower(skill)
+		for indicator := range softSkillIndicators {
+			if strings.Contains(skillLower, indicator) {
+				score++
+				extractedSkills = append(extractedSkills, skill)
 				break
 			}
 		}
 	}
-	return technical
+
+	return extractedSkills, score / totalIndicators
 }
 
-// Update soft skills keywords list
 func filterSoftSkills(skills []string) []string {
 	// Expanded list of soft skills keywords
 	softKeywords := map[string]bool{
@@ -487,32 +513,6 @@ func filterSoftSkills(skills []string) []string {
 		}
 	}
 	return soft
-}
-
-// New function to extract soft skills from experience descriptions
-func extractSoftSkillsFromExperience(entities ExtractedEntities) float64 {
-	softSkillIndicators := map[string]bool{
-		"led": true, "managed": true, "coordinated": true,
-		"collaborated": true, "mentored": true, "trained": true,
-		"facilitated": true, "organized": true, "presented": true,
-		"negotiated": true, "resolved": true, "improved": true,
-	}
-
-	score := 0.0
-	totalIndicators := float64(len(softSkillIndicators))
-
-	// Analyze all skills for leadership and management indicators
-	for _, skill := range entities.Skills {
-		skillLower := strings.ToLower(skill)
-		for indicator := range softSkillIndicators {
-			if strings.Contains(skillLower, indicator) {
-				score++
-				break
-			}
-		}
-	}
-
-	return score / totalIndicators
 }
 
 // Helper functions for BERT-based similarity
@@ -990,3 +990,29 @@ func analyzeSkillMatches(resumeSkills, jobSkills []string) ([]string, []PartialM
 
 	return exactMatches, partialMatches, missingSkills
 }
+
+// Update the filterTechnicalSkills function to be exported (capitalize first letter)
+func FilterTechnicalSkills(skills []string) []string {
+	technicalKeywords := map[string]bool{
+		"programming": true, "software": true, "development": true,
+		"java": true, "python": true, "go": true, "golang": true,
+		"javascript": true, "react": true, "node": true, "aws": true,
+		"cloud": true, "docker": true, "kubernetes": true, "git": true,
+		"database": true, "sql": true, "nosql": true, "api": true,
+		// Add more technical keywords as needed
+	}
+
+	var technical []string
+	for _, skill := range skills {
+		skill = strings.ToLower(skill)
+		for keyword := range technicalKeywords {
+			if strings.Contains(skill, keyword) {
+				technical = append(technical, skill)
+				break
+			}
+		}
+	}
+	return technical
+}
+
+// Update function calls to use the exported version

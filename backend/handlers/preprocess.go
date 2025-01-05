@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,15 +29,19 @@ type PreprocessedData struct {
 	ID              string            `json:"id"` // Add this field
 	TechnicalSkills []string          `json:"technical_skills"`
 	SoftSkills      []string          `json:"soft_skills"`
+	Projects        []Project         `json:"projects"`
+	Experience      []Experience      `json:"experience"`
 }
 
 // Update ExtractedEntities struct to match the actual response format
 type ExtractedEntities struct {
-	Name      string      `json:"name"`
-	Email     []string    `json:"email"` // Keep this as []string to handle multiple emails
-	Phone     string      `json:"phone"`
-	Skills    []string    `json:"skills"`
-	Education []Education `json:"education"`
+	Name       string       `json:"name"`
+	Email      []string     `json:"email"` // Keep this as []string to handle multiple emails
+	Phone      string       `json:"phone"`
+	Skills     []string     `json:"skills"`
+	Education  []Education  `json:"education"`
+	Projects   []Project    `json:"projects"`
+	Experience []Experience `json:"experience"`
 }
 
 type Education struct {
@@ -69,6 +75,32 @@ type JobRequirements struct {
 		Qualifications []string `json:"qualifications"`
 	} `json:"education"`
 	Responsibilities []string `json:"responsibilities"`
+}
+
+// Add new structs for Project and Experience
+type Project struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Technologies []string `json:"technologies"`
+	Duration     string   `json:"duration"`
+	Role         string   `json:"role"`
+	Timeline     string   `json:"timeline"`
+	Team         []string `json:"team"`
+	Achievements []string `json:"achievements"`
+	Status       string   `json:"status"`
+}
+
+type Experience struct {
+	Title            string   `json:"title"`
+	Company          string   `json:"company"`
+	Duration         string   `json:"duration"`
+	Location         string   `json:"location"`
+	Description      string   `json:"description"`
+	Skills           []string `json:"skills"`
+	Responsibilities []string `json:"responsibilities"`
+	Achievements     []string `json:"achievements"`
+	TeamSize         int      `json:"team_size"`
+	Level            string   `json:"level"`
 }
 
 // PreprocessResume handles resume preprocessing.
@@ -162,10 +194,12 @@ func PreprocessResume(c *fiber.Ctx) error {
 	result := PreprocessedData{
 		Text:            processedText,
 		Entities:        entities,
-		TechnicalSkills: filterTechnicalSkills(entities.Skills),
+		TechnicalSkills: FilterTechnicalSkills(entities.Skills),
 		SoftSkills:      filterSoftSkills(entities.Skills),
 		Education:       extractEducationDetails(entities.Education),
 		ID:              resumeID, // Add this field to PreprocessedData struct
+		Projects:        entities.Projects,
+		Experience:      entities.Experience,
 	}
 
 	return c.JSON(result)
@@ -271,11 +305,15 @@ func extractEntitiesWithGemini(text string) (ExtractedEntities, error) {
 4. Technical Skills (programming languages, tools, technologies)
 5. Soft Skills (leadership, communication, etc.)
 6. Education (with degree, institution, year, specialization)
+7. Projects (with name, description, technologies used, duration, role)
+8. Experience (with title, company, duration, location, responsibilities)
 
 Provide the output in JSON format with the keys: 
-name, email, phone, technical_skills, soft_skills, education.
+name, email, phone, technical_skills, soft_skills, education, projects, experience.
 Each skill type should be an array of strings.
 Education should include degree, institution, year, location, specialization.
+Projects should be an array of objects with name, description, technologies, duration, role.
+Experience should be an array of objects with title, company, duration, location, description, responsibilities.
 
 Text: ` + text
 
@@ -377,6 +415,10 @@ Text: ` + text
 		}
 	}
 
+	// Extract projects and experience
+	entities.Projects = extractProjects(text)
+	entities.Experience = extractExperience(text)
+
 	return entities, nil
 }
 
@@ -443,7 +485,7 @@ func SaveProcessedText(textType string, text string, id string, entities Extract
 
 	// Add categorized skills if they exist
 	if len(entities.Skills) > 0 {
-		data.TechnicalSkills = filterTechnicalSkills(entities.Skills)
+		data.TechnicalSkills = FilterTechnicalSkills(entities.Skills)
 		data.SoftSkills = filterSoftSkills(entities.Skills)
 	}
 
@@ -512,9 +554,11 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	model := client.GenerativeModel("gemini-pro")
 	prompt := `Analyze the following job description and extract:
     1. Required skills (both technical and soft skills)
-    2. Experience requirements (years and level)
+    2. Experience requirements (years, level, and specific areas)
     3. Educational requirements
-    4. Key responsibilities
+    4. Key responsibilities and duties
+    5. Preferred qualifications
+    6. Project requirements or experience
 
     Format the output as a clean JSON object with these exact keys:
     {
@@ -522,14 +566,20 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
         "experience": {
             "min_years": number,
             "level": "entry/mid/senior",
-            "areas": ["area1", "area2", ...]
+            "areas": ["area1", "area2", ...],
+            "preferred": ["preferred exp1", "preferred exp2", ...]
         },
         "education": {
             "degree": "required degree",
             "fields": ["field1", "field2", ...],
             "qualifications": ["qualification1", ...]
         },
-        "responsibilities": ["responsibility1", "responsibility2", ...]
+        "responsibilities": ["responsibility1", "responsibility2", ...],
+        "project_requirements": {
+            "types": ["type1", "type2", ...],
+            "skills": ["skill1", "skill2", ...],
+            "experience": ["exp1", "exp2", ...]
+        }
     }
 
     Job Description: ` + data.Description
@@ -572,7 +622,7 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	}
 
 	// Categorize skills
-	technicalSkills := filterTechnicalSkills(requirements.Skills)
+	technicalSkills := FilterTechnicalSkills(requirements.Skills)
 	softSkills := filterSoftSkills(requirements.Skills)
 
 	// Create a complete job description data structure
@@ -663,3 +713,552 @@ func extractEducationDetails(education []Education) []string {
 	}
 	return details
 }
+
+// Add these helper functions before extractProjects function
+
+func splitIntoSentences(text string) []string {
+	// Simple sentence splitting based on common delimiters
+	delimiters := regexp.MustCompile(`[.!?]\s+`)
+	sentences := delimiters.Split(text, -1)
+
+	var cleaned []string
+	for _, sentence := range sentences {
+		if trimmed := strings.TrimSpace(sentence); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return cleaned
+}
+
+func extractProjectName(text string) string {
+	// Look for project name patterns
+	patterns := []string{
+		`project[:|\s+]([^\.]+)`,
+		`developed[\s+]([^\.]+)`,
+		`created[\s+]([^\.]+)`,
+		`built[\s+]([^\.]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+func extractDescription(text string) string {
+	// Remove common project indicators from the text
+	indicators := []string{
+		"project:", "developed", "created", "built",
+		"implemented", "designed", "architected", "deployed",
+	}
+
+	description := text
+	for _, indicator := range indicators {
+		description = strings.ReplaceAll(strings.ToLower(description), indicator, "")
+	}
+
+	return strings.TrimSpace(description)
+}
+
+func extractTechnologies(text string) []string {
+	// Look for technology keywords
+	techKeywords := []string{
+		"using", "with", "technologies:", "tech stack:",
+		"built with", "developed using", "powered by",
+	}
+
+	var technologies []string
+	text = strings.ToLower(text)
+
+	for _, keyword := range techKeywords {
+		if idx := strings.Index(text, keyword); idx != -1 {
+			techText := text[idx+len(keyword):]
+			// Split by common separators
+			techs := strings.FieldsFunc(techText, func(r rune) bool {
+				return r == ',' || r == ';' || r == '/' || r == '|'
+			})
+			for _, tech := range techs {
+				if cleaned := strings.TrimSpace(tech); cleaned != "" {
+					technologies = append(technologies, cleaned)
+				}
+			}
+		}
+	}
+
+	return technologies
+}
+
+func extractDuration(text string) string {
+	// Look for duration patterns
+	patterns := []string{
+		`(\d+)\s*(?:month|year)s?`,
+		`(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s-]+\d{4}`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindString(text); match != "" {
+			return strings.TrimSpace(match)
+		}
+	}
+	return ""
+}
+
+func extractRole(text string) string {
+	// Look for role patterns
+	rolePatterns := []string{
+		`role[:|\s+]([^\.]+)`,
+		`position[:|\s+]([^\.]+)`,
+		`as\s+a\s+([^\.]+)`,
+	}
+
+	for _, pattern := range rolePatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+func extractCompany(text string) string {
+	// Look for company patterns
+	patterns := []string{
+		`at\s+([^,\.]+)`,
+		`with\s+([^,\.]+)`,
+		`for\s+([^,\.]+)`,
+		`company[:|\s+]([^,\.]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+func extractSkillsFromText(text string) []string {
+	// Extract skills using both technical and soft skills keywords
+	var skills []string
+
+	// Combine technical and soft skills keywords
+	skillsKeywords := map[string]bool{
+		// Technical keywords
+		"programming": true, "software": true, "development": true,
+		"java": true, "python": true, "golang": true,
+		"javascript": true, "react": true, "node": true,
+		// Soft skills keywords
+		"leadership": true, "communication": true, "teamwork": true,
+		"management": true, "coordination": true, "planning": true,
+	}
+
+	words := strings.Fields(strings.ToLower(text))
+	for _, word := range words {
+		if skillsKeywords[word] {
+			skills = append(skills, word)
+		}
+	}
+
+	return skills
+}
+
+// Add new function to extract projects using spago
+func extractProjects(text string) []Project {
+	// Split text into sentences
+	sentences := splitIntoSentences(text)
+
+	var projects []Project
+	var currentProject *Project
+
+	for _, sentence := range sentences {
+		// Look for project indicators
+		if containsProjectIndicators(sentence) {
+			if currentProject != nil {
+				projects = append(projects, *currentProject)
+			}
+			currentProject = &Project{}
+
+			// Extract project details
+			currentProject.Name = extractProjectName(sentence)
+			currentProject.Description = extractDescription(sentence)
+			currentProject.Technologies = extractTechnologies(sentence)
+			currentProject.Duration = extractDuration(sentence)
+			currentProject.Role = extractRole(sentence)
+			currentProject.Timeline = extractTimeline(sentence)
+			currentProject.Team = extractTeamMembers(sentence)
+			currentProject.Achievements = extractAchievements(sentence)
+			currentProject.Status = extractProjectStatus(sentence)
+		} else if currentProject != nil {
+			// Append additional details to current project
+			currentProject.Description += " " + sentence
+		}
+	}
+
+	// Add the last project if exists
+	if currentProject != nil {
+		projects = append(projects, *currentProject)
+	}
+
+	return projects
+}
+
+// Add new function to extract experience using spago
+func extractExperience(text string) []Experience {
+	// Split text into sections
+	sections := splitIntoSections(text)
+
+	var experiences []Experience
+	var currentExp *Experience
+
+	for _, section := range sections {
+		// Look for experience indicators
+		if containsExperienceIndicators(section) {
+			if currentExp != nil {
+				experiences = append(experiences, *currentExp)
+			}
+			currentExp = &Experience{}
+
+			// Extract experience details
+			currentExp.Title = extractTitle(section)
+			currentExp.Company = extractCompany(section)
+			currentExp.Duration = extractDuration(section)
+			currentExp.Location = extractLocation(section)
+			currentExp.Description = extractDescription(section)
+			currentExp.Skills = extractSkillsFromText(section)
+			currentExp.Responsibilities = extractResponsibilitiesFromExp(section)
+			currentExp.Achievements = extractAchievementsFromExp(section)
+			currentExp.TeamSize = extractTeamSize(section)
+			currentExp.Level = extractPositionLevel(section)
+		} else if currentExp != nil {
+			// Append additional details to current experience
+			currentExp.Description += " " + section
+		}
+	}
+
+	// Add the last experience if exists
+	if currentExp != nil {
+		experiences = append(experiences, *currentExp)
+	}
+
+	return experiences
+}
+
+// Add helper functions for extraction
+func containsProjectIndicators(text string) bool {
+	indicators := []string{
+		"project", "developed", "created", "built", "implemented",
+		"designed", "architected", "deployed", "managed project",
+	}
+	text = strings.ToLower(text)
+	for _, indicator := range indicators {
+		if strings.Contains(text, indicator) { // Fix: Contains instead of contains
+			return true
+		}
+	}
+	return false
+}
+
+func containsExperienceIndicators(text string) bool {
+	indicators := []string{
+		"experience", "work", "position", "role", "job",
+		"employed", "worked at", "company", "organization",
+	}
+	text = strings.ToLower(text)
+	for _, indicator := range indicators {
+		if strings.Contains(text, indicator) { // Fix: Contains instead of contains
+			return true
+		}
+	}
+	return false
+}
+
+// Helper functions for extraction
+func splitIntoSections(text string) []string {
+	// Split text into sections based on common delimiters
+	delimiters := []string{"\n\n", "•", "\\*", "\\-"}
+	sections := []string{text}
+
+	for _, delimiter := range delimiters {
+		var newSections []string
+		for _, section := range sections {
+			split := strings.Split(section, delimiter)
+			for _, s := range split {
+				if trimmed := strings.TrimSpace(s); trimmed != "" {
+					newSections = append(newSections, trimmed)
+				}
+			}
+		}
+		sections = newSections
+	}
+
+	return sections
+}
+
+func extractTitle(text string) string {
+	// Use NER to identify job titles
+	// This is a simplified version
+	titlePatterns := []string{
+		"software engineer", "developer", "architect",
+		"team lead", "manager", "consultant",
+	}
+
+	text = strings.ToLower(text)
+	for _, pattern := range titlePatterns {
+		if strings.Contains(text, pattern) { // Fix: Contains instead of contains
+			return strings.Title(pattern)
+		}
+	}
+	return ""
+}
+
+// Add similar extraction functions for other fields...
+
+// ...existing code...
+
+// Add new function to extract location
+func extractLocation(text string) string {
+	// Look for location patterns
+	patterns := []string{
+		`in\s+([^,\.]+)`,
+		`at\s+([^,\.]+)`,
+		`location[:|\s+]([^,\.]+)`,
+		`based\s+in\s+([^,\.]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+// Add new function to extract responsibilities from job description
+func extractResponsibilities(text string) []string {
+	sections := splitIntoSections(text)
+	var responsibilities []string
+
+	// Keywords that indicate responsibilities section
+	indicators := []string{
+		"responsibilities", "duties", "what you'll do",
+		"what you will do", "role overview", "job duties",
+	}
+
+	for _, section := range sections {
+		for _, indicator := range indicators {
+			if strings.Contains(strings.ToLower(section), indicator) {
+				// Extract bullet points or numbered items
+				items := extractListItems(section)
+				responsibilities = append(responsibilities, items...)
+				break
+			}
+		}
+	}
+
+	return responsibilities
+}
+
+// Helper function to extract list items
+func extractListItems(text string) []string {
+	var items []string
+
+	// Split by common list indicators
+	patterns := []string{
+		`[•\-\*]\s+([^\n]+)`, // Bullet points
+		`\d+\.\s+([^\n]+)`,   // Numbered items
+		`(?m)^-\s+([^\n]+)`,  // Dash items at start of line
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindAllStringSubmatch(text, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				items = append(items, strings.TrimSpace(match[1]))
+			}
+		}
+	}
+
+	return items
+}
+
+// Add helper functions for new project fields
+func extractTimeline(text string) string {
+	patterns := []string{
+		`timeline[:|\s+]([^\.]+)`,
+		`duration[:|\s+]([^\.]+)`,
+		`completed in[:|\s+]([^\.]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+func extractTeamMembers(text string) []string {
+	patterns := []string{
+		`team[:|\s+]([^\.]+)`,
+		`team size[:|\s+]([^\.]+)`,
+		`collaborated with[:|\s+]([^\.]+)`,
+	}
+
+	var members []string
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			members = append(members, strings.Split(match[1], ",")...)
+		}
+	}
+	return members
+}
+
+func extractAchievements(text string) []string {
+	patterns := []string{
+		`achieved[:|\s+]([^\.]+)`,
+		`results[:|\s+]([^\.]+)`,
+		`improved[:|\s+]([^\.]+)`,
+		`implemented[:|\s+]([^\.]+)`,
+	}
+
+	var achievements []string
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			achievements = append(achievements, strings.TrimSpace(match[1]))
+		}
+	}
+	return achievements
+}
+
+func extractProjectStatus(text string) string {
+	patterns := []string{
+		`status[:|\s+]([^\.]+)`,
+		`currently[:|\s+]([^\.]+)`,
+		`completed[:|\s+]([^\.]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+	return ""
+}
+
+func extractTeamSize(text string) int {
+	patterns := []string{
+		`team of (\d+)`,
+		`(\d+)[- ]person team`,
+		`managing (\d+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			if size, err := strconv.Atoi(match[1]); err == nil {
+				return size
+			}
+		}
+	}
+	return 0
+}
+
+func extractPositionLevel(text string) string {
+	patterns := []string{
+		`(junior|senior|lead|principal|staff)`,
+		`level[:|\s+]([\w\s]+)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.Title(strings.TrimSpace(match[1]))
+		}
+	}
+	return ""
+}
+
+// Add the missing function
+func extractAchievementsFromExp(text string) []string {
+	// Look for achievement patterns
+	patterns := []string{
+		`achieved\s+([^\.]+)`,
+		`accomplished\s+([^\.]+)`,
+		`resulted in\s+([^\.]+)`,
+		`successfully\s+([^\.]+)`,
+	}
+
+	var achievements []string
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllStringSubmatch(text, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				achievements = append(achievements, strings.TrimSpace(match[1]))
+			}
+		}
+	}
+
+	return achievements
+}
+
+// ...existing code...
+
+// Add new function to extract responsibilities from experience sections
+func extractResponsibilitiesFromExp(text string) []string {
+	// Look for responsibility-related patterns
+	patterns := []string{
+		`responsible for\s+([^\.]+)`,
+		`duties included\s+([^\.]+)`,
+		`key responsibilities\s*[:|\s+]([^\.]+)`,
+	}
+
+	var responsibilities []string
+
+	// First try to find explicitly stated responsibilities
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		matches := re.FindAllStringSubmatch(text, -1)
+		for _, match := range matches {
+			if len(match) > 1 {
+				responsibilities = append(responsibilities, strings.TrimSpace(match[1]))
+			}
+		}
+	}
+
+	// If no explicit responsibilities found, look for bullet points or numbered lists
+	if len(responsibilities) == 0 {
+		responsibilities = extractListItems(text)
+	}
+
+	// If still no responsibilities found, try to extract action-oriented sentences
+	if len(responsibilities) == 0 {
+		actionWords := []string{
+			`(developed|implemented|managed|led|created|designed|maintained|improved|coordinated)`,
+		}
+		for _, pattern := range actionWords {
+			re := regexp.MustCompile(`(?i)` + pattern + `\s+([^\.]+)`)
+			matches := re.FindAllStringSubmatch(text, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					responsibilities = append(responsibilities, strings.TrimSpace(match[0]))
+				}
+			}
+		}
+	}
+
+	return responsibilities
+}
+
+// ...rest of existing code...

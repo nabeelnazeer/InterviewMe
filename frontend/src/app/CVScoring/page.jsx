@@ -199,6 +199,8 @@ export default function CVScoring() {
           throw new Error('Failed to upload file');
         }
 
+        const uploadResult = await uploadResponse.json();
+
         // Then, preprocess the uploaded file
         const preprocessFormData = new FormData();
         preprocessFormData.append('resume', file);
@@ -213,6 +215,9 @@ export default function CVScoring() {
         }
 
         const result = await preprocessResponse.json();
+        // Add filename to preprocessed data
+        result.filename = uploadResult.filename;
+        
         setUploadedCV(file);
         setPreprocessedData(result);
 

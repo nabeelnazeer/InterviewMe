@@ -48,6 +48,8 @@ func main() {
 	app.Post(baseURL+"/score-resume", handlers.ScoreResume)
 	app.Delete(baseURL+"/delete", handlers.DeleteFile)
 
+	app.Get(baseURL+"/pdf/display", handlers.DisplayPDF)
+
 	app.Post(baseURL+"/score", handlers.ScoreResume)
 	app.Post(baseURL+"/clear", handlers.ClearFiles)
 
