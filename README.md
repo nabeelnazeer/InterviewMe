@@ -115,6 +115,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 
 ### Screenshots
 
+![Home page](demo_folder/shot5.png)  
+
+
+![score result](demo_folder/shot4.png)  
+
 ![Popup Interface](demo_folder/shot1.png)  
 
 
