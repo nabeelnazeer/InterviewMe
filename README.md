@@ -95,7 +95,7 @@ npm install next
 ```
 ## Environment Variables
 
-Create a .env file in the frontend directory and include the following:
+Create a .env file in the backend directory and include the following:
 ```bash
 HUGGING_FACE_API_KEY=your_hugging_face_api_key
 GEMINI_API_KEY=your_gemini_api_key
@@ -114,6 +114,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8080
 ## Project Documentation
 
 ### Screenshots
+
+![Home page](demo_folder/shot5.png)  
+
+
+![score result](demo_folder/shot4.png)  
 
 ![Popup Interface](demo_folder/shot1.png)  
 
