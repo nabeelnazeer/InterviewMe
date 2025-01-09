@@ -287,41 +287,30 @@ export default function CVScoring() {
     
     setIsProcessingJob(true);
     try {
+      // Generate job ID in same format as backend
+      const jobId = `job_${Math.floor(Date.now() / 1000)}`; // Unix timestamp in seconds
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preprocess-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: job.description }),
+        body: JSON.stringify({ 
+          description: job.description,
+          job_id: jobId // Send the job ID
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to process job description');
       
       const result = await response.json();
-      console.log('Raw Job Analysis Result:', result);
-
-      // Check if the response has the expected structure
-      if (!result || typeof result !== 'object') {
-        throw new Error('Invalid response format: not an object');
-      }
-
-      // Initialize default structure if requirements is missing
-      if (!result.requirements) {
-        result.requirements = {
-          skills: [],
-          experience: {
-            min_years: 0,
-            level: 'entry',
-            areas: []
-          },
-          education: {
-            degree: '',
-            fields: [],
-            qualifications: []
-          },
-          responsibilities: []
-        };
-      }
       
-      setJobAnalysis(result);
+      // Store the job ID with the result
+      const jobData = {
+        ...result,
+        id: jobId
+      };
+      
+      setJobAnalysis(jobData);
+
     } catch (err) {
       setError('Failed to process job description: ' + err.message);
       console.error('Job processing error:', err);
@@ -341,6 +330,11 @@ export default function CVScoring() {
 
     try {
       console.log('Starting CV scoring process...');
+      
+      // Use the correct resume ID format
+      const resumeId = `${preprocessedData.id || Date.now()}`;
+      // Use the job ID as is since it's already in the correct format
+      const jobId = `${jobAnalysis.id || Date.now()}`; // Should be in format "job_timestamp"
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
         method: 'POST',
@@ -348,8 +342,8 @@ export default function CVScoring() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          resume_id: preprocessedData.id,
-          job_id: jobAnalysis.id
+          resume_id: resumeId,
+          job_id: jobId
         }),
       });
 
@@ -360,19 +354,18 @@ export default function CVScoring() {
       const results = await response.json();
       console.log('Received scoring results:', results);
       
-      // Store in localStorage and verify it was stored
-      localStorage.setItem('scoringResults', JSON.stringify({
+      // Store the correct IDs format
+      const dataToStore = {
         scores: results,
         resumeData: preprocessedData,
-        jobData: jobAnalysis
-      }));
+        jobData: jobAnalysis,
+        resumeId: resumeId, // Store the correct format
+        jobId: jobId
+      };
 
-      const stored = localStorage.getItem('scoringResults');
-      if (!stored) {
-        throw new Error('Failed to store results in localStorage');
-      }
+      localStorage.setItem('scoringResults', JSON.stringify(dataToStore));
+      console.log('Stored data with correct IDs:', dataToStore);
 
-      console.log('Navigating to analysis page...');
       await router.push('/analysis');
 
     } catch (err) {
@@ -602,7 +595,7 @@ export default function CVScoring() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-white">
           Resume Evaluator

@@ -43,9 +43,11 @@ func main() {
 	app.Post("/preprocess", handlers.PreprocessResume)
 	app.Post("/preprocess-job", handlers.PreprocessJobDescription)
 	app.Post("/score-resume", handlers.ScoreResume)
+	app.Post("/analyze-projects", handlers.AnalyzeProjects) // Make sure this route is properly registered
 	app.Delete("/delete", handlers.DeleteFile)
 
 	app.Get("/pdf/display", handlers.DisplayPDF)
+	app.Post("/analyze-experience", handlers.AnalyzeExperience)
 
 	app.Post("/score", handlers.ScoreResume)
 	app.Post("/clear", handlers.ClearFiles)
