@@ -101,6 +101,7 @@ type Experience struct {
 	Achievements     []string `json:"achievements"`
 	TeamSize         int      `json:"team_size"`
 	Level            string   `json:"level"`
+	RoleDescription  string   `json:"role_description"` // Add this field
 }
 
 // PreprocessResume handles resume preprocessing.
@@ -907,45 +908,174 @@ func extractProjects(text string) []Project {
 	return projects
 }
 
-// Add new function to extract experience using spago
+// Update the extractExperience function
 func extractExperience(text string) []Experience {
-	// Split text into sections
-	sections := splitIntoSections(text)
-
+	sections := splitIntoExperienceSections(text)
 	var experiences []Experience
-	var currentExp *Experience
 
 	for _, section := range sections {
-		// Look for experience indicators
 		if containsExperienceIndicators(section) {
-			if currentExp != nil {
-				experiences = append(experiences, *currentExp)
-			}
-			currentExp = &Experience{}
+			exp := Experience{}
 
-			// Extract experience details
-			currentExp.Title = extractTitle(section)
-			currentExp.Company = extractCompany(section)
-			currentExp.Duration = extractDuration(section)
-			currentExp.Location = extractLocation(section)
-			currentExp.Description = extractDescription(section)
-			currentExp.Skills = extractSkillsFromText(section)
-			currentExp.Responsibilities = extractResponsibilitiesFromExp(section)
-			currentExp.Achievements = extractAchievementsFromExp(section)
-			currentExp.TeamSize = extractTeamSize(section)
-			currentExp.Level = extractPositionLevel(section)
-		} else if currentExp != nil {
-			// Append additional details to current experience
-			currentExp.Description += " " + section
+			// Extract basic details
+			exp.Title = extractTitle(section)
+			exp.Company = extractCompany(section)
+			exp.Duration = extractDuration(section)
+			exp.Location = extractLocation(section)
+
+			// Extract role description
+			exp.RoleDescription = extractRoleDescription(section)
+			if exp.RoleDescription == "" {
+				exp.RoleDescription = "null"
+			}
+
+			// Extract responsibilities
+			exp.Responsibilities = extractDetailedResponsibilities(section)
+			if len(exp.Responsibilities) == 0 {
+				exp.Responsibilities = []string{"null"}
+			}
+
+			// Extract other details
+			exp.Skills = extractSkillsFromText(section)
+			exp.Achievements = extractAchievementsFromExp(section)
+			exp.TeamSize = extractTeamSize(section)
+			exp.Level = extractPositionLevel(section)
+
+			if exp.Title != "" || exp.Company != "" {
+				experiences = append(experiences, exp)
+			}
 		}
 	}
 
-	// Add the last experience if exists
-	if currentExp != nil {
-		experiences = append(experiences, *currentExp)
+	return experiences
+}
+
+// Add new function to split text into experience sections
+func splitIntoExperienceSections(text string) []string {
+	// Common patterns that indicate new experience sections
+	patterns := []string{
+		`(?i)(?:\d{4}\s*-\s*(?:\d{4}|present))`,                                 // Date ranges
+		`(?i)(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}`, // Month Year
+		`(?i)(?:work experience|professional experience|employment history)`,    // Section headers
+		`(?i)(?:company|organization|firm):`,                                    // Company indicators
 	}
 
-	return experiences
+	var sections []string
+	currentSection := ""
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		isNewSection := false
+		for _, pattern := range patterns {
+			if matched, _ := regexp.MatchString(pattern, line); matched {
+				if currentSection != "" {
+					sections = append(sections, strings.TrimSpace(currentSection))
+				}
+				currentSection = line
+				isNewSection = true
+				break
+			}
+		}
+		if !isNewSection {
+			currentSection += "\n" + line
+		}
+	}
+
+	if currentSection != "" {
+		sections = append(sections, strings.TrimSpace(currentSection))
+	}
+
+	return sections
+}
+
+// Add new function to extract detailed role description
+func extractRoleDescription(text string) string {
+	// Patterns that typically introduce role descriptions
+	patterns := []string{
+		`(?i)role overview[:|\s+]([^\.]+\.)`,
+		`(?i)position summary[:|\s+]([^\.]+\.)`,
+		`(?i)job description[:|\s+]([^\.]+\.)`,
+		`(?i)primary responsibilities(?:\s+include)?[:|\s+]([^\.]+\.)`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		if match := re.FindStringSubmatch(text); len(match) > 1 {
+			return strings.TrimSpace(match[1])
+		}
+	}
+
+	// If no specific pattern matches, try to extract the first relevant sentence
+	sentences := splitIntoSentences(text)
+	for _, sentence := range sentences {
+		if containsRoleIndicators(sentence) {
+			return strings.TrimSpace(sentence)
+		}
+	}
+
+	return ""
+}
+
+// Add new function to extract detailed responsibilities
+func extractDetailedResponsibilities(text string) []string {
+	var responsibilities []string
+
+	// Look for bullet points or numbered lists first
+	bulletPoints := extractListItems(text)
+	if len(bulletPoints) > 0 {
+		for _, point := range bulletPoints {
+			if containsResponsibilityIndicators(point) {
+				responsibilities = append(responsibilities, strings.TrimSpace(point))
+			}
+		}
+	}
+
+	// If no bullet points found, look for responsibility-specific sentences
+	if len(responsibilities) == 0 {
+		sentences := splitIntoSentences(text)
+		for _, sentence := range sentences {
+			if containsResponsibilityIndicators(sentence) {
+				responsibilities = append(responsibilities, strings.TrimSpace(sentence))
+			}
+		}
+	}
+
+	return responsibilities
+}
+
+// Add helper function to check for role indicators
+func containsRoleIndicators(text string) bool {
+	indicators := []string{
+		"responsible for", "role involved", "position entailed",
+		"worked as", "served as", "functioned as",
+		"primary focus", "main duties", "key responsibilities",
+	}
+
+	text = strings.ToLower(text)
+	for _, indicator := range indicators {
+		if strings.Contains(text, indicator) {
+			return true
+		}
+	}
+	return false
+}
+
+// Add helper function to check for responsibility indicators
+func containsResponsibilityIndicators(text string) bool {
+	indicators := []string{
+		"developed", "implemented", "managed", "led", "created",
+		"designed", "maintained", "improved", "coordinated",
+		"responsible for", "handled", "oversaw", "spearheaded",
+		"established", "initiated", "launched", "executed",
+	}
+
+	text = strings.ToLower(text)
+	for _, indicator := range indicators {
+		if strings.Contains(text, indicator) {
+			return true
+		}
+	}
+	return false
 }
 
 // Add helper functions for extraction
@@ -1213,7 +1343,7 @@ func extractAchievementsFromExp(text string) []string {
 	return achievements
 }
 
-// ...existing code...
+// ...rest of existing code...
 
 // Add new function to extract responsibilities from experience sections
 func extractResponsibilitiesFromExp(text string) []string {
@@ -1262,3 +1392,43 @@ func extractResponsibilitiesFromExp(text string) []string {
 }
 
 // ...rest of existing code...
+
+// PreprocessJobRequest represents the request body for job preprocessing
+type PreprocessJobRequest struct {
+	Description string `json:"description"`
+	JobID       string `json:"job_id"`
+}
+
+// PreprocessJob handles job description preprocessing
+func PreprocessJob(c *fiber.Ctx) error {
+	var req PreprocessJobRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot parse JSON",
+		})
+	}
+
+	// Validate JobID format
+	matched, err := regexp.MatchString(`^job_\d+$`, req.JobID)
+	if err != nil || !matched {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid JobID format",
+		})
+	}
+
+	// Process the job description
+	// ...existing processing code...
+
+	// Example: Store the job data with JobID
+	jobData := fiber.Map{
+		"job_id":      req.JobID,
+		"description": req.Description,
+		// ...other processed fields...
+	}
+
+	// TODO: Implement storage logic (e.g., save to database)
+
+	return c.JSON(jobData)
+}
+
+// ...existing code...

@@ -501,11 +501,13 @@ const AnalysisPage = () => {
 
         <div className={`transform transition-all duration-300 ${isTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
           <div className="bg-gray-700/50 backdrop-blur-sm rounded-lg p-6 space-y-6">
+            {/* Project Name and Description */}
             <div className="border-b border-gray-600 pb-4">
               <h4 className="text-2xl font-semibold text-green-400 mb-3">{project.name}</h4>
               <p className="text-gray-300 leading-relaxed">{project.description}</p>
             </div>
 
+            {/* Tech Stack */}
             {project.tech_stack && project.tech_stack.length > 0 && (
               <div className="space-y-2">
                 <h5 className="text-lg font-semibold text-blue-400 flex items-center">
@@ -520,6 +522,40 @@ const AnalysisPage = () => {
                                text-blue-300 hover:bg-blue-500/20 transition-colors duration-300"
                     >
                       {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Relevance to Job */}
+            {project.relevance_to_job && (
+              <div className="space-y-2 border-t border-gray-600 pt-4">
+                <h5 className="text-lg font-semibold text-purple-400 flex items-center">
+                  <span className="mr-2">🎯</span>
+                  Job Relevance
+                </h5>
+                <p className="text-gray-300 leading-relaxed bg-purple-500/10 p-4 rounded-lg border border-purple-500/30">
+                  {project.relevance_to_job}
+                </p>
+              </div>
+            )}
+
+            {/* Matching Skills */}
+            {project.matching_skills && project.matching_skills.length > 0 && (
+              <div className="space-y-2 border-t border-gray-600 pt-4">
+                <h5 className="text-lg font-semibold text-green-400 flex items-center">
+                  <span className="mr-2">✓</span>
+                  Matching Skills
+                </h5>
+                <div className="flex flex-wrap gap-2">
+                  {project.matching_skills.map((skill, i) => (
+                    <span
+                      key={i}
+                      className="px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full text-sm
+                               text-green-300 hover:bg-green-500/20 transition-colors duration-300"
+                    >
+                      {skill}
                     </span>
                   ))}
                 </div>

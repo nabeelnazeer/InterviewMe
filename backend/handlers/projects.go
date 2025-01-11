@@ -125,7 +125,7 @@ func AnalyzeProjects(c *fiber.Ctx) error {
 		cleanJobDesc := sanitizeText(jobData.ProcessedText, maxPromptLength)
 
 		// Enhanced prompt with better structure and constraints
-		prompt := buildAnalysisPrompt(cleanDesc, cleanJobDesc)
+		prompt := buildAnalysisPrompt(cleanDesc, cleanJobDesc, project.Name)
 
 		// Add cooldown between API calls
 		time.Sleep(time.Second * promptCooldown)
@@ -142,6 +142,12 @@ func AnalyzeProjects(c *fiber.Ctx) error {
 		analysisResults = append(analysisResults, analysis)
 		processedProjects++
 	}
+
+	// Log the analysis results before sending response
+	log.Printf("Analysis completed for resume_id: %s, job_id: %s", req.ResumeID, req.JobID)
+	log.Printf("Analyzed %d projects", len(analysisResults))
+	responseBytes, _ := json.MarshalIndent(ProjectAnalysisResponse{Projects: analysisResults}, "", "  ")
+	log.Printf("Response payload: %s", string(responseBytes))
 
 	return c.JSON(ProjectAnalysisResponse{
 		Projects: analysisResults,
@@ -191,8 +197,9 @@ func preprocessProjects(projects []Project, jobDesc string) []Project {
 	return result
 }
 
-func buildAnalysisPrompt(projectDesc, jobDesc string) string {
+func buildAnalysisPrompt(projectDesc, jobDesc string, projectName string) string {
 	return fmt.Sprintf(`Analyze this project concisely:
+Project Name: %s
 Project Description: %s
 
 Key Job Requirements: %s
@@ -200,9 +207,9 @@ Key Job Requirements: %s
 Provide a JSON response with:
 {
 	"description": "one clear sentence about what the project does",
-	"tech_stack": ["only mentioned technologies", "max 5 key ones"],
+	"tech_stack": ["only mentioned technologies", "min 5 key ones"],
 	"relevance": "one sentence about job fit"
-}`, projectDesc, extractKeyRequirements(jobDesc))
+}`, projectName, projectDesc, extractKeyRequirements(jobDesc))
 }
 
 func extractKeyRequirements(jobDesc string) string {
@@ -359,7 +366,8 @@ func analyzeProject(ctx context.Context, model *genai.GenerativeModel, prompt st
 		return analysis, err
 	}
 
-	analysis.Description = geminiResponse.Description
+	// Ensure the description includes the project name
+	analysis.Description = fmt.Sprintf("%s: %s", project.Name, geminiResponse.Description)
 	analysis.TechStack = geminiResponse.TechStack
 	analysis.RelevanceToJob = geminiResponse.Relevance
 
