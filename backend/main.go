@@ -52,6 +52,12 @@ func main() {
 	app.Post("/score", handlers.ScoreResume)
 	app.Post("/clear", handlers.ClearFiles)
 
+	// Experience routes
+	app.Post("/analyze-experience", handlers.AnalyzeExperience)
+	app.Get("/api/process-experience", handlers.ProcessExperience)
+	app.Post("/api/experience/raw", handlers.ProcessRawExperience)
+	app.Get("/api/experience", handlers.GetProcessedExperience)
+
 	port := ":8080"
 	println("Server running on port", port)
 	app.Listen(port)

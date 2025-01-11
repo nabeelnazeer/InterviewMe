@@ -4,237 +4,244 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
 
-const (
-	maxTokenLength = 800 // Maximum length for text sent to Gemini
-	cooldownPeriod = 1   // Seconds between API calls
-)
-
-type ExperienceAnalysisRequest struct {
-	ResumeID string `json:"resume_id"`
-	JobID    string `json:"job_id"`
-}
-
-type ExperienceAnalysis struct {
-	TotalYears        float64           `json:"total_years"`
-	Roles             []ExperienceRole  `json:"roles"`
-	SkillsGained      []string          `json:"skills_gained"`
-	JobFitAnalysis    string            `json:"job_fit_analysis"`
-	ResponsibilityMap map[string]string `json:"responsibility_map"`
-}
-
-type ExperienceRole struct {
+type ExperienceResponse struct {
 	Title            string   `json:"title"`
-	Company          string   `json:"company"`
+	Description      string   `json:"description"`
 	Duration         string   `json:"duration"`
-	Skills           []string `json:"skills"`
 	Responsibilities []string `json:"responsibilities"`
+	MatchScore       float64  `json:"match_score"`
 }
 
-func AnalyzeExperience(c *fiber.Ctx) error {
-	var req ExperienceAnalysisRequest
-	if err := c.BodyParser(&req); err != nil {
+// Add new struct for raw JSON data
+type RawSkillsData struct {
+	Skills []string `json:"skills"`
+}
+
+// Add new function to handle raw JSON string
+func ProcessRawExperience(c *fiber.Ctx) error {
+	var data struct {
+		JsonString string `json:"json_string"`
+	}
+
+	if err := c.BodyParser(&data); err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
 
-	// Validate IDs
-	if req.ResumeID == "" || req.JobID == "" {
-		return c.JSON(ExperienceAnalysis{}) // Return empty analysis if IDs missing
-	}
+	// Clean the JSON string
+	cleanedJSON := cleanJSONString(data.JsonString)
 
-	// Load data with null checks
-	resumeData, err := loadTextData(req.ResumeID, "resume")
-	if err != nil || resumeData == nil {
-		return c.JSON(ExperienceAnalysis{})
-	}
-
-	jobData, err := loadTextData(req.JobID, "job")
-	if err != nil || jobData == nil {
-		return c.JSON(ExperienceAnalysis{})
-	}
-
-	// Check for empty experience
-	if len(resumeData.Entities.Experience) == 0 {
-		return c.JSON(ExperienceAnalysis{
-			TotalYears: 0,
-			Roles:      []ExperienceRole{},
+	// Parse the cleaned JSON
+	var skillsData RawSkillsData
+	if err := json.Unmarshal([]byte(cleanedJSON), &skillsData); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to parse JSON string: " + err.Error(),
 		})
 	}
 
-	// Initialize Gemini with API key from environment
+	// Categorize skills
+	technicalSkills := FilterTechnicalSkills(skillsData.Skills)
+	softSkills := filterSoftSkills(skillsData.Skills)
+
+	// Initialize Gemini for skill analysis
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
 	if err != nil {
-		return c.JSON(ExperienceAnalysis{})
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to initialize Gemini",
+		})
+	}
+	defer client.Close()
+
+	// Analyze skills with Gemini
+	model := client.GenerativeModel("gemini-pro")
+	skillsAnalysis, err := analyzeSkillsWithGemini(model, ctx, skillsData.Skills)
+	if err != nil {
+		log.Printf("Error analyzing skills: %v", err)
+		// Continue without Gemini analysis
+	}
+
+	return c.JSON(fiber.Map{
+		"raw_skills":       skillsData.Skills,
+		"technical_skills": technicalSkills,
+		"soft_skills":      softSkills,
+		"skills_analysis":  skillsAnalysis,
+	})
+}
+
+func analyzeSkillsWithGemini(model *genai.GenerativeModel, ctx context.Context, skills []string) (string, error) {
+	prompt := fmt.Sprintf(`Analyze these skills and provide a brief summary of the candidate's technical profile:
+    Skills: %v
+    Please focus on:
+    1. Main technical areas
+    2. Experience level indicated by the skill set
+    3. Potential roles suitable for this skill combination
+    Provide a concise 2-3 sentence response.`, skills)
+
+	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Candidates) > 0 && len(resp.Candidates[0].Content.Parts) > 0 {
+		return string(resp.Candidates[0].Content.Parts[0].(genai.Text)), nil
+	}
+
+	return "", fmt.Errorf("no content generated")
+}
+
+// Update main handler to support both file and raw JSON processing
+func GetProcessedExperience(c *fiber.Ctx) error {
+	// Check if raw JSON string is provided
+	if c.Get("Content-Type") == "application/json" {
+		return ProcessRawExperience(c)
+	}
+
+	// Get resume ID and job ID from query parameters
+	resumeID := c.Query("resume_id")
+	jobID := c.Query("job_id")
+
+	if resumeID == "" || jobID == "" {
+		return c.Status(400).JSON(fiber.Map{
+			"error": "Resume ID and Job ID are required",
+		})
+	}
+
+	// Read the processed resume file
+	resumePath := "processed_texts/resume/resume_" + resumeID + ".json"
+	resumeData, err := os.ReadFile(resumePath)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{
+			"error": "Resume data not found",
+		})
+	}
+
+	// Read the processed job file
+	jobPath := "processed_texts/job/job_" + jobID + ".json"
+	jobData, err := os.ReadFile(jobPath)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{
+			"error": "Job data not found",
+		})
+	}
+
+	// Parse the JSON data
+	var resumeJSON map[string]interface{}
+	var jobJSON map[string]interface{}
+
+	if err := json.Unmarshal(resumeData, &resumeJSON); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to parse resume data",
+		})
+	}
+
+	if err := json.Unmarshal(jobData, &jobJSON); err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to parse job data",
+		})
+	}
+
+	// Initialize Gemini client
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to initialize Gemini",
+		})
 	}
 	defer client.Close()
 
 	model := client.GenerativeModel("gemini-pro")
-	model.SetTemperature(0.7)
 
-	analysis, err := performExperienceAnalysis(ctx, model, resumeData, jobData)
-	if err != nil {
-		return c.JSON(ExperienceAnalysis{})
-	}
+	// Extract experiences from resume
+	experiences := resumeJSON["Entities"].(map[string]interface{})["Experience"].([]interface{})
+	var processedExperiences []ExperienceResponse
 
-	return c.JSON(analysis)
-}
+	for _, exp := range experiences {
+		experience := exp.(map[string]interface{})
 
-func performExperienceAnalysis(ctx context.Context, model *genai.GenerativeModel, resumeData, jobData *TextData) (ExperienceAnalysis, error) {
-	var analysis ExperienceAnalysis
+		// Generate concise description using Gemini
+		prompt := "Generate a concise one-sentence description for this job experience: " +
+			experience["description"].(string)
 
-	// Extract years (with truncated prompt)
-	yearsPrompt := truncateText(fmt.Sprintf(
-		"Calculate total years of experience from: %s",
-		formatExperienceForPrompt(resumeData.Entities.Experience),
-	), maxTokenLength)
-
-	yearsResp, err := model.GenerateContent(ctx, genai.Text(yearsPrompt))
-	if err == nil && len(yearsResp.Candidates) > 0 {
-		analysis.TotalYears = extractNumber(yearsResp.Candidates[0].Content.Parts[0].(genai.Text))
-	}
-
-	// Process roles (with cooldown and truncation)
-	var roles []ExperienceRole
-	for _, exp := range resumeData.Entities.Experience {
-		time.Sleep(time.Second * cooldownPeriod)
-
-		rolePrompt := truncateText(fmt.Sprintf(`
-            Analyze experience and list skills and responsibilities:
-            Title: %s
-            Company: %s
-            Description: %s
-            Format: {"skills":[],"responsibilities":[]}
-        `, exp.Title, exp.Company, exp.Description), maxTokenLength)
-
-		roleResp, err := model.GenerateContent(ctx, genai.Text(rolePrompt))
+		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 		if err != nil {
+			log.Printf("Error generating description: %v", err)
 			continue
 		}
 
-		var roleAnalysis struct {
-			Skills           []string `json:"skills"`
-			Responsibilities []string `json:"responsibilities"`
+		// Calculate match score based on job requirements
+		matchScore := calculateMatchScore(experience, jobJSON)
+
+		processedExp := ExperienceResponse{
+			Title:            experience["title"].(string),
+			Description:      string(resp.Candidates[0].Content.Parts[0].(genai.Text)),
+			Duration:         experience["duration"].(string),
+			Responsibilities: convertToStringSlice(experience["responsibilities"]),
+			MatchScore:       matchScore,
 		}
 
-		if respText, ok := roleResp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-			json.Unmarshal([]byte(respText), &roleAnalysis)
-		}
-
-		roles = append(roles, ExperienceRole{
-			Title:            exp.Title,
-			Company:          exp.Company,
-			Duration:         exp.Duration,
-			Skills:           roleAnalysis.Skills,
-			Responsibilities: roleAnalysis.Responsibilities,
-		})
-
-		analysis.SkillsGained = append(analysis.SkillsGained, roleAnalysis.Skills...)
+		processedExperiences = append(processedExperiences, processedExp)
 	}
 
-	analysis.Roles = roles
-
-	// Job fit analysis (truncated)
-	matchingPrompt := truncateText(fmt.Sprintf(
-		"Compare experience:%s with job:%s. List strengths and gaps.",
-		formatExperienceForPrompt(resumeData.Entities.Experience),
-		jobData.ProcessedText,
-	), maxTokenLength)
-
-	matchingResp, err := model.GenerateContent(ctx, genai.Text(matchingPrompt))
-	if err == nil && len(matchingResp.Candidates) > 0 {
-		analysis.JobFitAnalysis = string(matchingResp.Candidates[0].Content.Parts[0].(genai.Text))
-	}
-
-	// Map responsibilities (using existing helper)
-	analysis.ResponsibilityMap = mapExperienceToResponsibilities(
-		resumeData.Entities.Experience,
-		jobData.Requirements.Responsibilities,
-	)
-
-	return analysis, nil
+	return c.JSON(fiber.Map{
+		"experiences": processedExperiences,
+	})
 }
 
-// Add new helper function for text truncation
-func truncateText(text string, maxLength int) string {
-	if len(text) <= maxLength {
-		return text
-	}
-	return text[:maxLength] + "..."
-}
+func calculateMatchScore(experience map[string]interface{}, jobData map[string]interface{}) float64 {
+	// Get job requirements
+	requirements := jobData["Requirements"].(map[string]interface{})
+	requiredSkills := requirements["skills"].([]interface{})
 
-func formatExperienceForPrompt(experience []Experience) string {
-	var parts []string
-	for _, exp := range experience {
-		parts = append(parts, fmt.Sprintf(
-			"Title: %s\nCompany: %s\nDuration: %s\nDescription: %s",
-			exp.Title, exp.Company, exp.Duration, exp.Description,
-		))
-	}
-	return strings.Join(parts, "\n\n")
-}
+	// Get experience skills
+	expSkills := experience["skills"].([]interface{})
 
-func extractNumber(text genai.Text) float64 {
-	var number float64
-	fmt.Sscanf(string(text), "%f", &number)
-	return number
-}
-
-func mapExperienceToResponsibilities(experience []Experience, jobResponsibilities []string) map[string]string {
-	mapping := make(map[string]string)
-	for _, resp := range jobResponsibilities {
-		bestMatch := findBestExperienceMatch(resp, experience)
-		if bestMatch != "" {
-			mapping[resp] = bestMatch
-		}
-	}
-	return mapping
-}
-
-func findBestExperienceMatch(responsibility string, experience []Experience) string {
-	var bestMatch string
-	maxSimilarity := 0.0
-
-	for _, exp := range experience {
-		similarity := calculateSimilarity(responsibility, exp.Description)
-		if similarity > maxSimilarity {
-			maxSimilarity = similarity
-			bestMatch = fmt.Sprintf("%s at %s: %s", exp.Title, exp.Company, exp.Description)
+	// Calculate match score based on skills overlap
+	matchingSkills := 0
+	for _, reqSkill := range requiredSkills {
+		for _, expSkill := range expSkills {
+			if strings.ToLower(reqSkill.(string)) == strings.ToLower(expSkill.(string)) {
+				matchingSkills++
+				break
+			}
 		}
 	}
 
-	if maxSimilarity < 0.3 { // Threshold for considering it a match
-		return ""
-	}
-	return bestMatch
+	return float64(matchingSkills) / float64(len(requiredSkills))
 }
 
-func calculateSimilarity(text1, text2 string) float64 {
-	// Simplified similarity calculation using word overlap
-	words1 := strings.Fields(strings.ToLower(text1))
-	words2 := strings.Fields(strings.ToLower(text2))
-
-	wordSet := make(map[string]bool)
-	for _, word := range words1 {
-		wordSet[word] = true
+func convertToStringSlice(i interface{}) []string {
+	if i == nil {
+		return []string{}
 	}
 
-	matches := 0
-	for _, word := range words2 {
-		if wordSet[word] {
-			matches++
-		}
+	interfaceSlice := i.([]interface{})
+	stringSlice := make([]string, len(interfaceSlice))
+
+	for i, v := range interfaceSlice {
+		stringSlice[i] = v.(string)
 	}
 
-	return float64(matches) / float64(len(words1)+len(words2)-matches)
+	return stringSlice
+}
+
+// AnalyzeExperience handles experience analysis
+func AnalyzeExperience(c *fiber.Ctx) error {
+	return GetProcessedExperience(c) // Reuse existing functionality
+}
+
+// ProcessExperience handles experience processing
+func ProcessExperience(c *fiber.Ctx) error {
+	return GetProcessedExperience(c) // Reuse existing functionality
 }

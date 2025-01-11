@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -86,6 +87,31 @@ func safeFloat64(value float64) float64 {
 	return value
 }
 
+// Add new helper functions at the beginning of the file
+func getLatestFileID(textType string) (string, error) {
+	dir := filepath.Join("processed_texts", textType)
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	if len(files) == 0 {
+		return "", fmt.Errorf("no %s files found", textType)
+	}
+
+	// Sort files by modification time
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].ModTime().After(files[j].ModTime())
+	})
+
+	// Extract ID from filename (filename format: "type_id.json")
+	latestFile := files[0].Name()
+	fileID := strings.TrimPrefix(latestFile, textType+"_")
+	fileID = strings.TrimSuffix(fileID, ".json")
+
+	return fileID, nil
+}
+
 // ScoreResume handles the resume scoring endpoint
 func ScoreResume(c *fiber.Ctx) error {
 	var request struct {
@@ -98,6 +124,29 @@ func ScoreResume(c *fiber.Ctx) error {
 			"error": "Invalid request body",
 		})
 	}
+
+	// If IDs are not provided, use the most recent files
+	var err error
+	if request.ResumeID == "" {
+		request.ResumeID, err = getLatestFileID("resume")
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{
+				"error": "No resume files found",
+			})
+		}
+	}
+
+	if request.JobID == "" {
+		request.JobID, err = getLatestFileID("job")
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{
+				"error": "No job files found",
+			})
+		}
+	}
+
+	// Log the IDs being used
+	log.Printf("Scoring Resume - Using Resume ID: %s, Job ID: %s", request.ResumeID, request.JobID)
 
 	// Log the request
 	log.Printf("Scoring Request - ResumeID: %s, JobID: %s", request.ResumeID, request.JobID)

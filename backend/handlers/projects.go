@@ -40,6 +40,7 @@ type ProjectAnalysisResponse struct {
 	Projects []ProjectAnalysis `json:"projects"`
 }
 
+// Modify the AnalyzeProjects function to use latest files when IDs are not provided
 func AnalyzeProjects(c *fiber.Ctx) error {
 	var req ProjectAnalysisRequest
 
@@ -50,15 +51,28 @@ func AnalyzeProjects(c *fiber.Ctx) error {
 		})
 	}
 
-	// Log received data
-	log.Printf("Received request with resume_id: %s, job_id: %s", req.ResumeID, req.JobID)
-
-	// Handle empty IDs
-	if req.ResumeID == "" || req.JobID == "" {
-		return c.Status(400).JSON(fiber.Map{
-			"error": "Missing resume_id or job_id",
-		})
+	// If IDs are not provided, use the most recent files
+	var err error
+	if req.ResumeID == "" {
+		req.ResumeID, err = getLatestFileID("resume")
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{
+				"error": "No resume files found",
+			})
+		}
 	}
+
+	if req.JobID == "" {
+		req.JobID, err = getLatestFileID("job")
+		if err != nil {
+			return c.Status(404).JSON(fiber.Map{
+				"error": "No job files found",
+			})
+		}
+	}
+
+	// Log received data
+	log.Printf("Analyzing Projects - Using Resume ID: %s, Job ID: %s", req.ResumeID, req.JobID)
 
 	// Use IDs exactly as received - remove prefix handling code
 	resumeData, err := loadTextData(req.ResumeID, "resume")
