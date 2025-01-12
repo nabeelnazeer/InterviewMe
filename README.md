@@ -99,6 +99,10 @@ Create a .env file in the backend directory and include the following:
 ```bash
 HUGGING_FACE_API_KEY=your_hugging_face_api_key
 GEMINI_API_KEY=your_gemini_api_key
+PORT=8080
+
+
+SESSIONS_DIR=processed_texts/sessions
 
 ```
 
