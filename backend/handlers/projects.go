@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -51,43 +52,57 @@ func AnalyzeProjects(c *fiber.Ctx) error {
 		})
 	}
 
-	// If IDs are not provided, use the most recent files
-	var err error
-	if req.ResumeID == "" {
-		req.ResumeID, err = getLatestFileID("resume")
-		if err != nil {
-			return c.Status(404).JSON(fiber.Map{
-				"error": "No resume files found",
-			})
+	// Extract clean numeric ID from resume filename if it contains full filename
+	resumeID := req.ResumeID
+	if strings.Contains(resumeID, "resume_") {
+		resumeID = strings.TrimPrefix(resumeID, "resume_")
+		resumeID = strings.TrimSuffix(resumeID, ".json")
+	}
+	// Handle potential full filenames
+	if strings.Contains(resumeID, "upload-") || strings.Contains(resumeID, ".pdf") {
+		// Try to find the correct file using the timestamp format
+		files, err := os.ReadDir("processed_texts/resume")
+		if err == nil {
+			for _, file := range files {
+				if strings.HasPrefix(file.Name(), "resume_") && strings.HasSuffix(file.Name(), ".json") {
+					resumeID = strings.TrimPrefix(file.Name(), "resume_")
+					resumeID = strings.TrimSuffix(resumeID, ".json")
+					break
+				}
+			}
 		}
 	}
 
-	if req.JobID == "" {
-		req.JobID, err = getLatestFileID("job")
-		if err != nil {
-			return c.Status(404).JSON(fiber.Map{
-				"error": "No job files found",
-			})
-		}
-	}
+	// Clean job ID
+	jobID := strings.TrimPrefix(req.JobID, "job_")
+	jobID = strings.TrimSuffix(jobID, ".json")
 
-	// Log received data
-	log.Printf("Analyzing Projects - Using Resume ID: %s, Job ID: %s", req.ResumeID, req.JobID)
+	// Add proper prefixes for file loading
+	resumeFileID := fmt.Sprintf("resume_%s", resumeID)
+	jobFileID := fmt.Sprintf("job_%s", jobID)
 
-	// Use IDs exactly as received - remove prefix handling code
-	resumeData, err := loadTextData(req.ResumeID, "resume")
+	log.Printf("Analyzing Projects - Using cleaned IDs - Resume: %s, Job: %s", resumeFileID, jobFileID)
+
+	// Load resume data
+	resumeData, err := LoadTextData(resumeFileID, "resume")
 	if err != nil {
+		log.Printf("Error loading resume data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
-			"error": "Resume data not found",
+			"error": fmt.Sprintf("Resume data not found: %v", err),
 		})
 	}
 
-	jobData, err := loadTextData(req.JobID, "job")
+	// Load job data
+	jobData, err := LoadTextData(jobFileID, "job")
 	if err != nil {
+		log.Printf("Error loading job data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
-			"error": "Job data not found",
+			"error": fmt.Sprintf("Job data not found: %v", err),
 		})
 	}
+
+	// Log successful data loading
+	log.Printf("Successfully loaded data for analysis - Resume ID: %s, Job ID: %s", resumeFileID, jobFileID)
 
 	// Check if there are any projects
 	if len(resumeData.Entities.Projects) == 0 {
@@ -446,4 +461,45 @@ func enhanceSkillMatching(projectSkills, jobSkills []string) []string {
 	}
 
 	return enhancedMatches
+}
+
+// Update the loadTextData helper function to be more flexible with file paths
+func loadTextData(id string, textType string) (*TextData, error) {
+	// Clean the ID and ensure proper format
+	cleanID := strings.TrimPrefix(id, fmt.Sprintf("%s_", textType))
+	cleanID = strings.TrimSuffix(cleanID, ".json")
+
+	// Try different possible file paths
+	possiblePaths := []string{
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s_%s.json", textType, cleanID)),
+		filepath.Join("processed_texts", textType, id),
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s.json", id)),
+	}
+
+	var fileData []byte
+	var err error
+	var successPath string
+
+	// Try each possible path
+	for _, path := range possiblePaths {
+		log.Printf("Attempting to load file: %s", path)
+		if fileData, err = os.ReadFile(path); err == nil {
+			successPath = path
+			break
+		}
+	}
+
+	if err != nil {
+		log.Printf("Error reading file from all attempted paths: %v", err)
+		return nil, err
+	}
+
+	log.Printf("Successfully loaded file from: %s", successPath)
+
+	var data TextData
+	if err := json.Unmarshal(fileData, &data); err != nil {
+		return nil, err
+	}
+
+	return &data, nil
 }

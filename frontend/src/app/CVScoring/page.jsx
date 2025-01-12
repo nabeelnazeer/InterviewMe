@@ -215,6 +215,8 @@ export default function CVScoring() {
         }
 
         const result = await preprocessResponse.json();
+        console.log('Preprocessed data:', result); // For debugging
+        
         // Add filename to preprocessed data
         result.filename = uploadResult.filename;
         
@@ -333,50 +335,69 @@ export default function CVScoring() {
     try {
       console.log('Starting CV scoring process...');
       
-      // Clean job ID by removing any 'job_' prefix
-      const cleanJobId = jobAnalysis.id.replace(/^job_+/, '');
-      
-      const requestData = {
-        resume_id: preprocessedData.id,
-        job_id: cleanJobId
-      };
+      // Extract clean IDs
+      const resumeID = preprocessedData.data?.id || preprocessedData.id || resumeFilename.replace('resume_', '').replace('.json', '');
+      const jobID = jobAnalysis.id?.replace('job_', '') || jobFilename.replace('job_', '').replace('.json', '');
 
-      console.log('Sending scoring request with:', requestData);
+      console.log('Using IDs for scoring:', { resumeID, jobID });
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
+      // First do scoring
+      const scoringResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify({
+          resume_id: resumeID,
+          job_id: jobID
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Score API failed: ${response.status} ${response.statusText}`);
+      if (!scoringResponse.ok) {
+        throw new Error(`Score API failed: ${scoringResponse.status} ${scoringResponse.statusText}`);
       }
 
-      const results = await response.json();
+      const results = await scoringResponse.json();
       console.log('Received scoring results:', results);
       
-      // Store the correct IDs format
+      // Then analyze projects using the same IDs
+      const projectsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze-projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resume_id: resumeID,
+          job_id: jobID
+        }),
+      });
+
+      if (!projectsResponse.ok) {
+        throw new Error(`Projects analysis failed: ${projectsResponse.status}`);
+      }
+
+      const projectsAnalysis = await projectsResponse.json();
+
+      // Store both scoring and projects results
       const dataToStore = {
         scores: results,
+        projects: projectsAnalysis,
         resumeData: preprocessedData,
         jobData: jobAnalysis,
-        resumeId: preprocessedData.id, // Store the correct format
-        jobId: cleanJobId,
-        resumeFilename: preprocessedData.filename,
-        jobFilename: jobAnalysis.filename
+        resumeId: resumeID,
+        jobId: jobID,
+        resumeFilename: `resume_${resumeID}.json`,
+        jobFilename: `job_${jobID}.json`
       };
 
       localStorage.setItem('scoringResults', JSON.stringify(dataToStore));
-      console.log('Stored data with correct IDs:', dataToStore);
+      console.log('Stored scoring data:', dataToStore);
 
       await router.push('/analysis');
 
     } catch (err) {
-      console.error('Scoring error:', err);
-      setError(`Failed to score CV: ${err.message}`);
+      console.error('Analysis error:', err);
+      setError(`Failed to analyze CV: ${err.message}`);
       setIsScoring(false);
     }
   };
@@ -665,6 +686,138 @@ export default function CVScoring() {
     }
   };
 
+  // Add this new component for displaying preprocessed data
+  const PreprocessedDataDisplay = ({ data }) => {
+    if (!data) return null;
+  
+    const entities = data.data?.entities || data.entities || {};
+    const technicalSkills = data.data?.technical_skills || data.technical_skills || [];
+    const softSkills = data.data?.soft_skills || data.soft_skills || [];
+    const education = data.data?.education || data.education || [];
+    const experience = data.data?.experience || data.experience || [];
+  
+    return (
+      <div className="mt-4 bg-gray-800 rounded-lg p-4">
+        <h3 className="font-semibold text-white mb-2">Extracted Information:</h3>
+        <div className="bg-gray-700 p-3 rounded text-sm space-y-2">
+          {/* Personal Information */}
+          <div className="space-y-2 pb-2 border-b border-gray-600">
+            <div>
+              <span className="text-gray-400">Name:</span>{' '}
+              <span className="text-white">{entities.name || 'Not found'}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Email:</span>{' '}
+              <span className="text-white">{Array.isArray(entities.email) ? entities.email[0] : entities.email || 'Not found'}</span>
+            </div>
+            <div>
+              <span className="text-gray-400">Phone:</span>{' '}
+              <span className="text-white">{entities.phone || 'Not found'}</span>
+            </div>
+          </div>
+  
+          {/* Skills Section */}
+          <div className="space-y-4 pt-2">
+            {/* Technical Skills */}
+            {technicalSkills.length > 0 && (
+              <div>
+                <span className="text-gray-400 block mb-2">Technical Skills:</span>
+                <div className="flex flex-wrap gap-2">
+                  {technicalSkills.map((skill, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-gray-600 rounded text-xs border border-gray-500 text-gray-200"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+  
+            {/* Soft Skills */}
+            {softSkills.length > 0 && (
+              <div>
+                <span className="text-gray-400 block mb-2">Soft Skills:</span>
+                <div className="flex flex-wrap gap-2">
+                  {softSkills.map((skill, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-purple-600/30 rounded text-xs border border-purple-500 text-gray-200"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+  
+          {/* Education Section */}
+          {education.length > 0 && (
+            <div className="pt-2 border-t border-gray-600">
+              <span className="text-gray-400 block mb-2">Education:</span>
+              <div className="space-y-2">
+                {education.map((edu, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-600/50 p-2 rounded border border-gray-600"
+                  >
+                    <div className="text-white">{edu.degree}</div>
+                    <div className="text-gray-300 text-sm">{edu.institution}</div>
+                    <div className="text-gray-400 text-xs">
+                      {edu.year} {edu.location && `• ${edu.location}`}
+                    </div>
+                    {edu.specialization && (
+                      <div className="text-gray-300 text-sm mt-1">
+                        Specialization: {edu.specialization}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+  
+          {/* Experience Section */}
+          {experience.length > 0 && (
+            <div className="pt-2 border-t border-gray-600">
+              <span className="text-gray-400 block mb-2">Experience:</span>
+              <div className="space-y-3">
+                {experience.map((exp, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-600/50 p-2 rounded border border-gray-600"
+                  >
+                    <div className="font-medium text-white">{exp.title}</div>
+                    <div className="text-gray-300 text-sm">{exp.company}</div>
+                    <div className="text-gray-400 text-xs">{exp.duration}</div>
+                    {exp.location && (
+                      <div className="text-gray-400 text-xs">{exp.location}</div>
+                    )}
+                    {exp.description && (
+                      <div className="text-gray-300 text-sm mt-1">{exp.description}</div>
+                    )}
+                    {exp.responsibilities && exp.responsibilities.length > 0 && (
+                      <div className="mt-1">
+                        <div className="text-gray-400 text-xs">Key Responsibilities:</div>
+                        <ul className="list-disc list-inside text-gray-300 text-sm">
+                          {exp.responsibilities.slice(0, 3).map((resp, idx) => (
+                            <li key={idx}>{resp}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -719,94 +872,20 @@ export default function CVScoring() {
               </label>
             </div>
             {preprocessedData && (
-              <div className="mt-4 bg-gray-800 rounded-lg p-4">
-                <h3 className="font-semibold mb-2">Extracted Information:</h3>
-                <div className="bg-gray-700 p-3 rounded text-sm space-y-2">
-                  {/* Personal Information */}
-                  <div className="space-y-2 pb-2 border-b border-gray-600">
-                    <div>
-                      <span className="text-gray-400">Name:</span>{' '}
-                      {(preprocessedData.result?.entities?.name || preprocessedData?.entities?.name) ?? 'Not found'}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Email:</span>{' '}
-                      {(preprocessedData.result?.entities?.email?.[0] || preprocessedData?.entities?.email?.[0]) ?? 'Not found'}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Phone:</span>{' '}
-                      {(preprocessedData.result?.entities?.phone || preprocessedData?.entities?.phone) ?? 'Not found'}
-                    </div>
-                  </div>
-
-                  {/* Technical Skills */}
-                  {(preprocessedData.result?.technical_skills || preprocessedData?.technical_skills)?.length > 0 && (
-                    <div className="pt-2">
-                      <span className="text-gray-400 block mb-2">Technical Skills:</span>
-                      <div className="flex flex-wrap gap-2">
-                        {(preprocessedData.result?.technical_skills || preprocessedData?.technical_skills).map((skill, index) => (
-                          <span 
-                            key={index} 
-                            className="px-2 py-1 bg-gray-600 rounded text-xs 
-                                     border border-gray-500 text-gray-200"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Education */}
-                  {(preprocessedData.result?.education || preprocessedData?.education)?.length > 0 && (
-                    <div className="pt-2 border-t border-gray-600">
-                      <span className="text-gray-400 block mb-2">Education:</span>
-                      <div className="space-y-2">
-                        {(preprocessedData.result?.education || preprocessedData?.education).map((edu, index) => (
-                          <div 
-                            key={index} 
-                            className="text-sm bg-gray-600/50 p-2 rounded border border-gray-600"
-                          >
-                            {edu}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Experience */}
-                  {preprocessedData.result?.experience && preprocessedData.result.experience.length > 0 && (
-                    <div className="pt-2 border-t border-gray-600">
-                      <span className="text-gray-400 block mb-2">Experience:</span>
-                      <div className="space-y-3">
-                        {preprocessedData.result.experience.map((exp, index) => (
-                          <div 
-                            key={index} 
-                            className="bg-gray-600/50 p-2 rounded border border-gray-600"
-                          >
-                            <div className="font-medium text-white">{exp.title}</div>
-                            <div className="text-sm text-gray-300">{exp.company}</div>
-                            <div className="text-xs text-gray-400">{exp.duration}</div>
-                            {exp.description && (
-                              <div className="text-sm text-gray-300 mt-1">{exp.description}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <PreprocessedDataDisplay data={preprocessedData} />
             )}
             {error && (
               <p className="mt-2 text-red-400 text-sm">{error}</p>
             )}
             {uploadedCV && (
-              <button
-                onClick={handleDelete}
-                className="mt-4 flex items-center text-red-400 hover:text-red-300"
-              >
-                <FiTrash2 className="mr-2" /> Remove CV
-              </button>
+              <div>
+                <button
+                  onClick={handleDelete}
+                  className="mt-4 flex items-center text-red-400 hover:text-red-300"
+                >
+                  <FiTrash2 className="mr-2" /> Remove CV
+                </button>
+              </div>
             )}
           </div>
 
@@ -895,3 +974,101 @@ export default function CVScoring() {
     </div>
   );
 }
+
+// Add this after handleScore function
+
+const analyzeProjects = async (resumeId, jobId) => {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze-projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        resume_id: resumeId,
+        job_id: jobId
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Projects analysis failed: ${response.status}`);
+    }
+
+    const results = await response.json();
+    return results;
+  } catch (err) {
+    console.error('Projects analysis error:', err);
+    throw err;
+  }
+};
+
+// Update handleScore to include project analysis
+const handleScore = async () => {
+  if (!uploadedCV || !jobAnalysis) {
+    setError('Please upload a CV and select a job description first');
+    return;
+  }
+
+  setIsScoring(true);
+  setError(null);
+
+  try {
+    console.log('Starting CV scoring process...');
+    
+    // Extract IDs from the preprocessed data
+    // Use data.id from preprocessed response for resume
+    const resumeID = preprocessedData.data?.id || preprocessedData.id;
+    
+    // Use timestamp from job analysis
+    const jobID = jobAnalysis.id?.replace('job_', '') || '';
+
+    console.log('Using IDs for scoring:', { resumeID, jobID });
+
+    const requestData = {
+      resume_id: resumeID,
+      job_id: jobID
+    };
+
+    console.log('Sending scoring request with:', requestData);
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Score API failed: ${response.status} ${response.statusText}`);
+    }
+
+    const results = await response.json();
+    console.log('Received scoring results:', results);
+    
+    // Then analyze projects using the same IDs
+    const projectsAnalysis = await analyzeProjects(resumeID, jobID);
+
+    // Store both scoring and projects results
+    const dataToStore = {
+      scores: results,
+      projects: projectsAnalysis,
+      resumeData: preprocessedData,
+      jobData: jobAnalysis,
+      resumeId: resumeID,
+      jobId: jobID,
+      resumeFilename: `resume_${resumeID}.json`,
+      jobFilename: `job_${jobID}.json`
+    };
+
+    localStorage.setItem('scoringResults', JSON.stringify(dataToStore));
+    console.log('Stored scoring data:', dataToStore);
+
+    await router.push('/analysis');
+
+  } catch (err) {
+    console.error('Analysis error:', err);
+    setError(`Failed to analyze CV: ${err.message}`);
+    setIsScoring(false);
+  }
+};

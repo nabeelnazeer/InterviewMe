@@ -1,6 +1,14 @@
 package handlers
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
 
 // TextData represents the processed text data structure
 type TextData struct {
@@ -85,4 +93,45 @@ type Entities struct {
 	Email []string `json:"email"`
 	Phone string   `json:"phone"`
 	// ...existing fields...
+}
+
+// LoadTextData loads processed text data from file
+func LoadTextData(id string, textType string) (*TextData, error) {
+	// Clean the ID by removing any prefix if present
+	cleanID := strings.TrimPrefix(id, textType+"_")
+	cleanID = strings.TrimSuffix(cleanID, ".json")
+
+	// Try different possible file paths
+	possiblePaths := []string{
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s_%s.json", textType, cleanID)),
+		filepath.Join("processed_texts", textType, id),
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s.json", id)),
+	}
+
+	var fileData []byte
+	var err error
+	var successPath string
+
+	// Try each possible path
+	for _, path := range possiblePaths {
+		log.Printf("Attempting to load file: %s", path)
+		if fileData, err = os.ReadFile(path); err == nil {
+			successPath = path
+			break
+		}
+	}
+
+	if err != nil {
+		log.Printf("Error reading file from all attempted paths: %v", err)
+		return nil, err
+	}
+
+	log.Printf("Successfully loaded file from: %s", successPath)
+
+	var data TextData
+	if err := json.Unmarshal(fileData, &data); err != nil {
+		return nil, err
+	}
+
+	return &data, nil
 }

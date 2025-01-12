@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -124,4 +125,45 @@ func SaveLog(data PreprocessedData, logType string) error {
 	}
 
 	return nil
+}
+
+func SaveProcessedText(textType string, text string, id string, entities ExtractedEntities) error {
+	// Ensure proper file naming
+	if !strings.HasPrefix(id, textType+"_") {
+		id = textType + "_" + id
+	}
+	if !strings.HasSuffix(id, ".json") {
+		id += ".json"
+	}
+
+	// Create directory if it doesn't exist
+	outputDir := filepath.Join("processed_texts", textType)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	data := TextData{
+		ProcessedText: text,
+		Timestamp:     time.Now(),
+		Type:          textType,
+		ID:            id,
+		Entities:      entities,
+	}
+
+	// Add categorized skills if they exist
+	if len(entities.Skills) > 0 {
+		data.TechnicalSkills = FilterTechnicalSkills(entities.Skills)
+		data.SoftSkills = filterSoftSkills(entities.Skills)
+	}
+
+	// Create filename with type and ID
+	filePath := filepath.Join(outputDir, id)
+
+	// Marshal data to JSON
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("error marshaling data: %v", err)
+	}
+
+	return os.WriteFile(filePath, jsonData, 0644)
 }

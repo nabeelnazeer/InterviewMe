@@ -392,7 +392,13 @@ Text: ` + text
 					Specialization: getString(eduMap, "specialization"),
 					GraduationDate: getString(eduMap, "graduation_date"),
 				}
-				// Only add education entry if at least degree or institution is present
+
+				// Clean up empty fields
+				if education.Year == "" && education.GraduationDate != "" {
+					education.Year = education.GraduationDate
+				}
+
+				// Only add education entry if essential fields are present
 				if education.Degree != "" || education.Institution != "" {
 					entities.Education = append(entities.Education, education)
 				}
@@ -479,6 +485,9 @@ Text: ` + text
 		log.Printf("Error saving JSON log: %v", err)
 	}
 
+	// Validate before returning
+	validateExtractedEntities(&entities)
+
 	return entities, nil
 }
 
@@ -531,41 +540,6 @@ func extractEducationWithModel(text string) []string {
 	// TODO: Implement actual model-based extraction
 	// For now, return an empty slice
 	return []string{}
-}
-
-// Update SaveProcessedText to include skills categorization
-func SaveProcessedText(textType string, text string, id string, entities ExtractedEntities) error {
-	data := TextData{
-		ProcessedText: text,
-		Timestamp:     time.Now(),
-		Type:          textType,
-		ID:            id,
-		Entities:      entities,
-	}
-
-	// Add categorized skills if they exist
-	if len(entities.Skills) > 0 {
-		data.TechnicalSkills = FilterTechnicalSkills(entities.Skills)
-		data.SoftSkills = filterSoftSkills(entities.Skills)
-	}
-
-	// Create directory if it doesn't exist
-	outputDir := filepath.Join("processed_texts", textType)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Create filename with type and ID
-	filename := fmt.Sprintf("%s_%s.json", textType, id)
-	filePath := filepath.Join(outputDir, filename)
-
-	// Marshal data to JSON
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(filePath, jsonData, 0644)
 }
 
 // PreprocessJobDescription handles job description preprocessing

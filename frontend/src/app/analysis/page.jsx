@@ -11,11 +11,47 @@ import { FaCheckCircle, FaBriefcase, FaGraduationCap, FaTools, FaChartLine,
 const processStoredData = (storedData) => {
   try {
     const parsedData = JSON.parse(storedData);
-    
-    // Extract resume data
-    const resumeData = parsedData.resumeData || {};
-    const entities = resumeData.entities || {};
-    
+    console.log('Full stored data:', parsedData); // Debug log
+
+    // Try to extract education data from various possible locations
+    const resumeData = parsedData.result || parsedData.resumeData?.data || parsedData.data || {};
+    console.log('Resume data:', resumeData); // Debug log
+
+    // Process education data
+    const educationData = resumeData.education || [];
+    console.log('Raw education data:', educationData); // Debug log
+
+    // Process education data
+    const processedEducation = (educationData || []).map(edu => {
+      if (typeof edu === 'string') {
+        // Handle string format (e.g., "Electrical Electronics Engineering from Cochin University of Science and Technology ()")
+        const [degree, rest] = edu.split(' from ');
+        if (rest) {
+          const [institution, year] = rest.split('(');
+          return {
+            degree: degree?.trim() || 'Not specified',
+            institution: institution?.trim() || 'Not specified',
+            year: year ? year.replace(')', '').trim() : '',
+            specialization: degree?.includes('in') ? degree.split('in')[1]?.trim() : ''
+          };
+        }
+        return {
+          degree: edu,
+          institution: 'Not specified',
+          year: '',
+          specialization: ''
+        };
+      }
+      return {
+        degree: edu.degree || 'Not specified',
+        institution: edu.institution || 'Not specified',
+        year: edu.year || edu.graduation_date || '',
+        specialization: edu.specialization || ''
+      };
+    });
+
+    console.log('Processed education:', processedEducation); // Debug log
+
     // Extract scoring data
     const scores = parsedData.scores || {};
     const detailedScores = scores.detailed_scores || {};
@@ -26,10 +62,10 @@ const processStoredData = (storedData) => {
       soft_skills_score: Math.round(detailedScores.soft_skills || 0),
       experience_score: Math.round(scores.experience_match || 0),
       education_score: Math.round(scores.education_match || 0),
-      education: entities.education || [],
-      experience: entities.experience || [],
-      projects: entities.projects || [],
-      skills: entities.skills || [],
+      education: processedEducation,
+      experience: resumeData.experience || [],
+      projects: resumeData.projects || [],
+      skills: resumeData.technical_skills || [],
       recommendations: scores.feedback || ['No recommendations available'],
       matchedSkills: scores.matched_skills || {
         exact_matches: [],
@@ -76,11 +112,15 @@ const AnalysisPage = () => {
     
     try {
       const storedData = localStorage.getItem('scoringResults');
+      console.log('Raw stored data:', storedData); // Debug log
+      
       if (!storedData) {
         throw new Error('No scoring data found');
       }
 
       const processedData = processStoredData(storedData);
+      console.log('Processed data:', processedData); // Debug log
+      
       if (!processedData) {
         throw new Error('Error processing scoring data');
       }
@@ -111,23 +151,27 @@ const AnalysisPage = () => {
           return;
         }
 
-        // Use IDs exactly as they are - no additional processing
-        const requestData = {
-          resume_id: analysisData.resumeId,
-          job_id: analysisData.jobId
-        };
+        const storedData = JSON.parse(localStorage.getItem('scoringResults'));
+        const resumeID = storedData?.resumeId?.replace('resume_', '');
+        const jobID = storedData?.jobId?.replace('job_', '');
 
-        console.log('Sending request with IDs:', requestData);
+        console.log('Sending project analysis request with:', { resumeID, jobID });
 
         const response = await axios.post(
           `${process.env.NEXT_PUBLIC_API_URL}/analyze-projects`,
-          requestData
+          {
+            resume_id: resumeID,
+            job_id: jobID
+          }
         );
 
         if (response.data?.projects) {
-          setProjectsData(response.data.projects);
-        } else {
-          throw new Error('No projects data in response');
+          console.log('Received projects:', response.data.projects);
+          // Filter out any "None" projects
+          const validProjects = response.data.projects.filter(
+            project => project.name !== "None" && project.description !== "No projects found in resume"
+          );
+          setProjectsData(validProjects);
         }
       } catch (error) {
         console.error('Project analysis error:', error.response?.data || error.message);
@@ -267,26 +311,55 @@ const AnalysisPage = () => {
     );
   }
 
-  const EducationSection = ({ education }) => (
-    <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-      <h3 className="text-xl font-bold mb-4 flex items-center">
-        <FaGraduationCap className="mr-2 text-green-400" />
-        Education
-      </h3>
-      <div className="space-y-4">
-        {education.map((edu, index) => (
-          <div key={index} className="p-4 bg-gray-700 rounded">
-            <h4 className="font-semibold text-green-400">{edu.degree}</h4>
-            <p className="text-gray-300">{edu.institution}</p>
-            <p className="text-gray-400">{edu.year}</p>
-            {edu.specialization && (
-              <p className="text-gray-300 mt-1">Specialization: {edu.specialization}</p>
-            )}
+  const EducationSection = ({ education }) => {
+    console.log('Education data received:', education); // Debug log
+    
+    return (
+      <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+        <h3 className="text-xl font-bold mb-4 flex items-center">
+          <FaGraduationCap className="mr-2 text-green-400" />
+          Education
+        </h3>
+        {education && education.length > 0 ? (
+          <div className="space-y-4">
+            {education.map((edu, index) => {
+              console.log('Rendering education item:', edu); // Debug log for each item
+              return (
+                <div key={index} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600 hover:border-green-500 transition-colors duration-300">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-green-400 text-lg">
+                        {edu.degree}
+                      </h4>
+                      <p className="text-gray-300 text-md mt-1">
+                        {edu.institution}
+                      </p>
+                      {edu.specialization && (
+                        <p className="text-gray-400 mt-1">
+                          <span className="text-gray-500">Specialization:</span> {edu.specialization}
+                        </p>
+                      )}
+                    </div>
+                    {edu.year && (
+                      <div className="text-right ml-4">
+                        <p className="text-gray-400 font-semibold">
+                          {edu.year}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
+        ) : (
+          <div className="text-center p-4 bg-gray-700/30 rounded-lg">
+            <p className="text-gray-400">No education details found</p>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const ExperienceSection = ({ experience }) => {
     const [currentRole, setCurrentRole] = useState(0);
@@ -436,7 +509,7 @@ const AnalysisPage = () => {
       );
     }
 
-    if (!projects || projects.length === 0) {
+    if (!projects || (Array.isArray(projects) && projects.length === 0)) {
       return (
         <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
           <div className="flex items-center justify-center h-40">

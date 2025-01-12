@@ -133,6 +133,27 @@ func ScoreResume(c *fiber.Ctx) error {
 		})
 	}
 
+	// Ensure proper file naming format
+	resumeID := request.ResumeID
+	if !strings.HasPrefix(resumeID, "resume_") {
+		resumeID = "resume_" + resumeID
+	}
+
+	jobID := request.JobID
+	if !strings.HasPrefix(jobID, "job_") {
+		jobID = "job_" + jobID
+	}
+
+	// Ensure .json extension
+	if !strings.HasSuffix(resumeID, ".json") {
+		resumeID += ".json"
+	}
+	if !strings.HasSuffix(jobID, ".json") {
+		jobID += ".json"
+	}
+
+	log.Printf("Processing with formatted IDs - Resume: %s, Job: %s", resumeID, jobID)
+
 	// Clean IDs by removing any existing prefixes
 	cleanedResumeID := cleanID(request.ResumeID, "resume")
 	cleanedJobID := cleanID(request.JobID, "job")
@@ -145,7 +166,7 @@ func ScoreResume(c *fiber.Ctx) error {
 	log.Printf("Scoring Resume - Using Resume ID: %s, Job ID: %s", resumeFileID, jobFileID)
 
 	// Load both text and entities using cleaned IDs
-	resumeData, err := loadTextData(resumeFileID, "resume")
+	resumeData, err := LoadTextData(resumeFileID, "resume")
 	if err != nil {
 		log.Printf("Error loading resume data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
@@ -153,7 +174,7 @@ func ScoreResume(c *fiber.Ctx) error {
 		})
 	}
 
-	jobData, err := loadTextData(jobFileID, "job")
+	jobData, err := LoadTextData(jobFileID, "job")
 	if err != nil {
 		log.Printf("Error loading job data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
@@ -161,42 +182,25 @@ func ScoreResume(c *fiber.Ctx) error {
 		})
 	}
 
-	// Log the IDs being used
-	log.Printf("Scoring Resume - Using Resume ID: %s, Job ID: %s", request.ResumeID, request.JobID)
-
-	// Log the request
-	log.Printf("Scoring Request - ResumeID: %s, JobID: %s", request.ResumeID, request.JobID)
-
-	// Load both text and entities
-	resumeData, err = loadTextData(request.ResumeID, "resume")
-	if err != nil {
-		log.Printf("Error loading resume data: %v", err)
-		return c.Status(404).JSON(fiber.Map{
-			"error": "Resume data not found",
-		})
-	}
 	log.Printf("Loaded Resume Data - Skills: %v, Education: %v",
 		resumeData.Entities.Skills,
 		resumeData.Entities.Education)
-	//log the job id
-	log.Printf("Job ID: %s", request.JobID)
 
-	jobData, err = loadTextData(request.JobID, "job")
-	if err != nil {
-		log.Printf("Error loading job data: %v", err)
-		return c.Status(404).JSON(fiber.Map{
-			"error": "Job description data not found",
-		})
-	}
-	log.Printf("Loaded Job Data - Skills: %v, Requirements: %v",
-		jobData.Requirements.Skills,
-		jobData.Requirements)
+	log.Printf("Job ID: %s", jobFileID)
 
 	// Calculate normalized scores (0-100 scale)
-	skillsScore := math.Min(safeFloat64(calculateSkillsMatch(resumeData.Entities.Skills, jobData.Requirements.Skills)*maxScore), maxScore)
-	experienceScore := math.Min(safeFloat64(calculateExperienceMatch(resumeData.Entities, jobData.Requirements)*maxScore), maxScore)
-	educationScore := math.Min(safeFloat64(calculateEducationMatch(resumeData.Entities.Education, jobData.Requirements.Education)*maxScore), maxScore)
-	technicalScore := math.Min(safeFloat64(calculateTechnicalSkillsScore(resumeData, jobData)*maxScore), maxScore)
+	skillsScore := math.Min(safeFloat64(calculateSkillsMatch(
+		resumeData.Entities.Skills,
+		jobData.Requirements.Skills)*maxScore), maxScore)
+	experienceScore := math.Min(safeFloat64(calculateExperienceMatch(
+		resumeData.Entities,
+		jobData.Requirements)*maxScore), maxScore)
+	educationScore := math.Min(safeFloat64(calculateEducationMatch(
+		resumeData.Entities.Education,
+		jobData.Requirements.Education)*maxScore), maxScore)
+	technicalScore := math.Min(safeFloat64(calculateTechnicalSkillsScore(
+		resumeData,
+		jobData)*maxScore), maxScore)
 
 	// Calculate overall score using technical skills instead of education (weighted average)
 	overallScore := math.Min(safeFloat64(
@@ -239,46 +243,6 @@ func ScoreResume(c *fiber.Ctx) error {
 	log.Printf("Score Response: %+v", scoreResponse)
 
 	return c.JSON(scoreResponse)
-}
-
-func loadTextData(id string, textType string) (*TextData, error) {
-	// Clean the ID by removing any prefix if present
-	cleanID := strings.TrimPrefix(id, textType+"_")
-	cleanID = strings.TrimSuffix(cleanID, ".json")
-
-	// Try different filename patterns
-	possiblePaths := []string{
-		filepath.Join("processed_texts", textType, fmt.Sprintf("%s_%s.json", textType, cleanID)),
-		filepath.Join("processed_texts", textType, fmt.Sprintf("%s.json", id)),
-		filepath.Join("processed_texts", textType, id),
-	}
-
-	var fileData []byte
-	var err error
-	var successPath string
-
-	// Try each possible path
-	for _, path := range possiblePaths {
-		log.Printf("Attempting to load file: %s", path)
-		if fileData, err = os.ReadFile(path); err == nil {
-			successPath = path
-			break
-		}
-	}
-
-	if err != nil {
-		log.Printf("Error reading file from all attempted paths: %v", err)
-		return nil, err
-	}
-
-	log.Printf("Successfully loaded file from: %s", successPath)
-
-	var data TextData
-	if err := json.Unmarshal(fileData, &data); err != nil {
-		return nil, err
-	}
-
-	return &data, nil
 }
 
 // Enhanced calculateSkillsMatch with semantic search

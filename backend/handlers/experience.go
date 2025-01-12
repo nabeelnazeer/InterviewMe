@@ -2,11 +2,9 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -43,41 +41,20 @@ func GetProcessedExperience(c *fiber.Ctx) error {
 		})
 	}
 
-	// Construct file paths directly
-	resumePath := filepath.Join("processed_texts", "resume", resumeFilename)
-	jobPath := filepath.Join("processed_texts", "job", jobFilename)
-
-	log.Printf("Attempting to read files - Resume: %s, Job: %s", resumePath, jobPath)
-
-	// Read files
-	resumeData, err := os.ReadFile(resumePath)
+	// Load data using shared LoadTextData function
+	resumeData, err := LoadTextData(resumeFilename, "resume")
 	if err != nil {
-		log.Printf("Error reading resume file: %v", err)
+		log.Printf("Error loading resume data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
 			"error": fmt.Sprintf("Resume file not found: %v", err),
 		})
 	}
 
-	jobData, err := os.ReadFile(jobPath)
+	jobData, err := LoadTextData(jobFilename, "job")
 	if err != nil {
-		log.Printf("Error reading job file: %v", err)
+		log.Printf("Error loading job data: %v", err)
 		return c.Status(500).JSON(fiber.Map{
 			"error": fmt.Sprintf("Failed to read job data: %v", err),
-		})
-	}
-
-	// Parse resume and job data
-	var resumeMap map[string]interface{}
-	if err := json.Unmarshal(resumeData, &resumeMap); err != nil {
-		return c.Status(500).JSON(fiber.Map{
-			"error": "Failed to parse resume data",
-		})
-	}
-
-	var jobMap map[string]interface{}
-	if err := json.Unmarshal(jobData, &jobMap); err != nil {
-		return c.Status(500).JSON(fiber.Map{
-			"error": "Failed to parse job data",
 		})
 	}
 
@@ -93,45 +70,32 @@ func GetProcessedExperience(c *fiber.Ctx) error {
 
 	model := client.GenerativeModel("gemini-pro")
 
-	// Get raw experiences
-	rawJSON := resumeMap["raw_json"].(string)
-	var rawData map[string]interface{}
-	json.Unmarshal([]byte(rawJSON), &rawData)
-	experiences := rawData["experience"].([]interface{})
-
-	// Process each experience
+	// Process experiences directly from resumeData
 	var processedExperiences []ProcessedExperience
 	var totalMonths float64
 
-	jobDesc := jobMap["ProcessedText"].(string)
-	jobReqs := jobMap["Requirements"].(map[string]interface{})
-
-	for _, exp := range experiences {
-		experience := exp.(map[string]interface{})
-
+	for _, exp := range resumeData.Entities.Experience {
 		// Calculate duration
-		duration := experience["duration"].(string)
-		months := calculateDurationInMonths(duration)
+		months := calculateDurationInMonths(exp.Duration)
 		totalMonths += months
 
 		// Generate enhanced description with Gemini
-		description := experience["description"].(string)
-		enhancedDesc := generateEnhancedDescription(model, ctx, description, jobDesc)
+		enhancedDesc := generateEnhancedDescription(model, ctx, exp.Description, jobData.ProcessedText)
 
 		processed := ProcessedExperience{
-			Title:          experience["title"].(string),
-			Company:        experience["company"].(string),
-			Duration:       duration,
+			Title:          exp.Title,
+			Company:        exp.Company,
+			Duration:       exp.Duration,
 			Description:    enhancedDesc,
-			RelevantSkills: extractRelevantSkills(description, jobReqs),
-			JobFitSummary:  analyzeJobFit(model, ctx, description, jobDesc),
+			RelevantSkills: extractRelevantSkills(exp.Description, jobData.Requirements),
+			JobFitSummary:  analyzeJobFit(model, ctx, exp.Description, jobData.ProcessedText),
 		}
 
 		processedExperiences = append(processedExperiences, processed)
 	}
 
 	// Generate overall fit analysis
-	overallFit := analyzeOverallFit(model, ctx, processedExperiences, jobDesc)
+	overallFit := analyzeOverallFit(model, ctx, processedExperiences, jobData.ProcessedText)
 
 	response := ExperienceResponse{
 		TotalYearsExperience: totalMonths / 12.0,
@@ -139,7 +103,6 @@ func GetProcessedExperience(c *fiber.Ctx) error {
 		OverallFit:           overallFit,
 	}
 
-	// Add the missing return statement to complete the function
 	return c.JSON(response)
 }
 
@@ -249,24 +212,21 @@ func parseDate(dateStr string) time.Time {
 	return time.Time{}
 }
 
-func extractRelevantSkills(description string, jobReqs map[string]interface{}) []string {
+// Update extractRelevantSkills to work with JobRequirements instead of map
+func extractRelevantSkills(description string, jobReqs JobRequirements) []string {
 	var relevantSkills []string
+	requiredSkills := make(map[string]bool)
 
-	// Extract required skills from job requirements
-	if skills, ok := jobReqs["skills"].([]interface{}); ok {
-		requiredSkills := make(map[string]bool)
-		for _, skill := range skills {
-			if skillStr, ok := skill.(string); ok {
-				requiredSkills[strings.ToLower(skillStr)] = true
-			}
-		}
+	// Add all job requirements skills to the map
+	for _, skill := range jobReqs.Skills {
+		requiredSkills[strings.ToLower(skill)] = true
+	}
 
-		// Extract skills from experience description
-		words := strings.Fields(strings.ToLower(description))
-		for _, word := range words {
-			if requiredSkills[word] {
-				relevantSkills = append(relevantSkills, word)
-			}
+	// Extract skills from experience description
+	words := strings.Fields(strings.ToLower(description))
+	for _, word := range words {
+		if requiredSkills[word] {
+			relevantSkills = append(relevantSkills, word)
 		}
 	}
 
