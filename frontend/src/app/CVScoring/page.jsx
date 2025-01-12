@@ -287,15 +287,15 @@ export default function CVScoring() {
     
     setIsProcessingJob(true);
     try {
-      // Generate job ID in same format as backend
-      const jobId = `job_${Math.floor(Date.now() / 1000)}`; // Unix timestamp in seconds
+      const timestamp = Math.floor(Date.now() / 1000);
+      const jobId = `job_${timestamp}`; // Create clean job ID
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/preprocess-job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           description: job.description,
-          job_id: jobId // Send the job ID
+          job_id: jobId
         }),
       });
 
@@ -303,13 +303,15 @@ export default function CVScoring() {
       
       const result = await response.json();
       
-      // Store the job ID with the result
+      // Store the clean filename
       const jobData = {
         ...result,
-        id: jobId
+        id: jobId,
+        filename: `job_${timestamp}.json` // Store the correct filename format
       };
       
       setJobAnalysis(jobData);
+      localStorage.setItem('jobFilename', jobData.filename); // Store for later use
 
     } catch (err) {
       setError('Failed to process job description: ' + err.message);
@@ -331,20 +333,22 @@ export default function CVScoring() {
     try {
       console.log('Starting CV scoring process...');
       
-      // Use the correct resume ID format
-      const resumeId = `${preprocessedData.id || Date.now()}`;
-      // Use the job ID as is since it's already in the correct format
-      const jobId = `${jobAnalysis.id || Date.now()}`; // Should be in format "job_timestamp"
+      // Clean job ID by removing any 'job_' prefix
+      const cleanJobId = jobAnalysis.id.replace(/^job_+/, '');
+      
+      const requestData = {
+        resume_id: preprocessedData.id,
+        job_id: cleanJobId
+      };
+
+      console.log('Sending scoring request with:', requestData);
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/score-resume`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          resume_id: resumeId,
-          job_id: jobId
-        }),
+        body: JSON.stringify(requestData),
       });
 
       if (!response.ok) {
@@ -359,8 +363,10 @@ export default function CVScoring() {
         scores: results,
         resumeData: preprocessedData,
         jobData: jobAnalysis,
-        resumeId: resumeId, // Store the correct format
-        jobId: jobId
+        resumeId: preprocessedData.id, // Store the correct format
+        jobId: cleanJobId,
+        resumeFilename: preprocessedData.filename,
+        jobFilename: jobAnalysis.filename
       };
 
       localStorage.setItem('scoringResults', JSON.stringify(dataToStore));
@@ -594,6 +600,71 @@ export default function CVScoring() {
     };
   }, []);
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      // Resume preprocessing
+      const resumeResponse = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/preprocess`, formData);
+      localStorage.setItem('session_id_resume', resumeResponse.data.session_id);
+      
+      // Job preprocessing
+      const jobResponse = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/preprocess-job`, {
+        description: jobDescription
+      });
+      localStorage.setItem('session_id_job', jobResponse.data.session_id_job);
+  
+      // Store the full responses
+      const scoringResults = {
+        scores: resumeResponse.data.scores,
+        resumeData: resumeResponse.data,
+        jobData: jobResponse.data,
+        resumeId: resumeResponse.data.id,
+        jobId: jobResponse.data.id,
+        resumeResponse,
+        jobResponse
+      };
+      
+      localStorage.setItem('scoringResults', JSON.stringify(scoringResults));
+      
+      // Log stored session IDs
+      console.log('Stored session IDs:', {
+        resume: resumeResponse.data.session_id,
+        job: jobResponse.data.session_id_job
+      });
+  
+      router.push('/analysis');
+    } catch (error) {
+      console.error('Error during preprocessing:', error);
+      setError('Failed to process files');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleJobDescriptionSubmit = async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL}/preprocess-job`,
+        { description: jobDescription }
+      );
+  
+      // Store the job filename for later use
+      if (response.data.filename) {
+        localStorage.setItem('jobFilename', response.data.filename);
+      }
+  
+      // Store full response for scoring
+      localStorage.setItem('jobResponse', JSON.stringify(response.data));
+  
+      // Rest of your existing code...
+    } catch (error) {
+      // ...existing error handling...
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto space-y-8">
@@ -648,32 +719,81 @@ export default function CVScoring() {
               </label>
             </div>
             {preprocessedData && (
-              <div className="mt-4 text-white">
+              <div className="mt-4 bg-gray-800 rounded-lg p-4">
                 <h3 className="font-semibold mb-2">Extracted Information:</h3>
                 <div className="bg-gray-700 p-3 rounded text-sm space-y-2">
-                  <div><span className="text-gray-400">Name:</span> {preprocessedData.entities.name}</div>
-                  <div>
-                    <span className="text-gray-400">Email:</span>{' '}
-                    {Array.isArray(preprocessedData.entities.email) 
-                      ? preprocessedData.entities.email.join(', ')
-                      : preprocessedData.entities.email || 'N/A'}
+                  {/* Personal Information */}
+                  <div className="space-y-2 pb-2 border-b border-gray-600">
+                    <div>
+                      <span className="text-gray-400">Name:</span>{' '}
+                      {(preprocessedData.result?.entities?.name || preprocessedData?.entities?.name) ?? 'Not found'}
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Email:</span>{' '}
+                      {(preprocessedData.result?.entities?.email?.[0] || preprocessedData?.entities?.email?.[0]) ?? 'Not found'}
+                    </div>
+                    <div>
+                      <span className="text-gray-400">Phone:</span>{' '}
+                      {(preprocessedData.result?.entities?.phone || preprocessedData?.entities?.phone) ?? 'Not found'}
+                    </div>
                   </div>
-                  <div><span className="text-gray-400">Phone:</span> {preprocessedData.entities.phone}</div>
-                  <div><span className="text-gray-400">Skills:</span> {preprocessedData.entities.skills.join(', ')}</div>
-                  <div className="text-gray-400">Education:</div>
-                  <div className="pl-4">
-                    {preprocessedData.entities.education.map((edu, index) => (
-                      <div key={index} className="mb-1">
-                        {[
-                          edu.degree && `${edu.degree}`,
-                          edu.specialization && `in ${edu.specialization}`,
-                          edu.institution && `from ${edu.institution}`,
-                          edu.location && `(${edu.location})`,
-                          edu.graduation_date || edu.year
-                        ].filter(Boolean).join(' ')}
+
+                  {/* Technical Skills */}
+                  {(preprocessedData.result?.technical_skills || preprocessedData?.technical_skills)?.length > 0 && (
+                    <div className="pt-2">
+                      <span className="text-gray-400 block mb-2">Technical Skills:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {(preprocessedData.result?.technical_skills || preprocessedData?.technical_skills).map((skill, index) => (
+                          <span 
+                            key={index} 
+                            className="px-2 py-1 bg-gray-600 rounded text-xs 
+                                     border border-gray-500 text-gray-200"
+                          >
+                            {skill}
+                          </span>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Education */}
+                  {(preprocessedData.result?.education || preprocessedData?.education)?.length > 0 && (
+                    <div className="pt-2 border-t border-gray-600">
+                      <span className="text-gray-400 block mb-2">Education:</span>
+                      <div className="space-y-2">
+                        {(preprocessedData.result?.education || preprocessedData?.education).map((edu, index) => (
+                          <div 
+                            key={index} 
+                            className="text-sm bg-gray-600/50 p-2 rounded border border-gray-600"
+                          >
+                            {edu}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Experience */}
+                  {preprocessedData.result?.experience && preprocessedData.result.experience.length > 0 && (
+                    <div className="pt-2 border-t border-gray-600">
+                      <span className="text-gray-400 block mb-2">Experience:</span>
+                      <div className="space-y-3">
+                        {preprocessedData.result.experience.map((exp, index) => (
+                          <div 
+                            key={index} 
+                            className="bg-gray-600/50 p-2 rounded border border-gray-600"
+                          >
+                            <div className="font-medium text-white">{exp.title}</div>
+                            <div className="text-sm text-gray-300">{exp.company}</div>
+                            <div className="text-xs text-gray-400">{exp.duration}</div>
+                            {exp.description && (
+                              <div className="text-sm text-gray-300 mt-1">{exp.description}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

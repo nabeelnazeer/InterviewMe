@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 
 	"interviewme/handlers"
@@ -29,34 +30,31 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
 
+	// Add logging middleware
+	app.Use(func(c *fiber.Ctx) error {
+		log.Printf("Incoming request: %s %s from %s", c.Method(), c.Path(), c.IP())
+		return c.Next()
+	})
+
 	// Create uploads directory if it doesn't exist
 	if err := os.MkdirAll("uploads", 0755); err != nil {
-		panic("Could not create uploads directory")
+		log.Fatalf("Failed to create uploads directory: %v", err)
 	}
-
-	// Routes without baseURL prefix
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
 
 	app.Post("/upload", handlers.UploadFile)
 	app.Post("/preprocess", handlers.PreprocessResume)
 	app.Post("/preprocess-job", handlers.PreprocessJobDescription)
 	app.Post("/score-resume", handlers.ScoreResume)
-	app.Post("/analyze-projects", handlers.AnalyzeProjects) // Make sure this route is properly registered
+	app.Post("/analyze-projects", handlers.AnalyzeProjects)
 	app.Delete("/delete", handlers.DeleteFile)
 
 	app.Get("/pdf/display", handlers.DisplayPDF)
-	app.Post("/analyze-experience", handlers.AnalyzeExperience)
 
 	app.Post("/score", handlers.ScoreResume)
 	app.Post("/clear", handlers.ClearFiles)
 
 	// Experience routes
-	app.Post("/analyze-experience", handlers.AnalyzeExperience)
-	app.Get("/api/process-experience", handlers.ProcessExperience)
-	app.Post("/api/experience/raw", handlers.ProcessRawExperience)
-	app.Get("/api/experience", handlers.GetProcessedExperience)
+	app.Get("/analyze-experience", handlers.GetProcessedExperience) // Uses query parameters
 
 	port := ":8080"
 	println("Server running on port", port)

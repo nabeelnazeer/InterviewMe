@@ -21,13 +21,13 @@ import (
 // ScoreResponse represents the scoring results
 type ScoreResponse struct {
 	OverallScore       float64            `json:"overall_score"`
-	SkillsMatch        float64            `json:"skills_match"`
+	DetailedScores     map[string]float64 `json:"detailed_scores"`
 	ExperienceMatch    float64            `json:"experience_match"`
 	EducationMatch     float64            `json:"education_match"`
-	DetailedScores     map[string]float64 `json:"detailed_scores"`
 	Feedback           []string           `json:"feedback"`
 	MatchedSkills      SkillMatches       `json:"matched_skills"`
 	SoftSkillsAnalysis SoftSkillsData     `json:"soft_skills_analysis"`
+	ProcessedEntities  ExtractedEntities  `json:"processed_entities"`
 }
 
 // Add new type for skill matches
@@ -112,6 +112,14 @@ func getLatestFileID(textType string) (string, error) {
 	return fileID, nil
 }
 
+// Clean ID removes any duplicate type prefixes from ID
+func cleanID(id string, prefix string) string {
+	// Remove all occurrences of prefix
+	cleaned := strings.TrimPrefix(id, prefix+"_")
+	cleaned = strings.TrimPrefix(cleaned, prefix+"_") // Remove second occurrence if exists
+	return cleaned
+}
+
 // ScoreResume handles the resume scoring endpoint
 func ScoreResume(c *fiber.Ctx) error {
 	var request struct {
@@ -125,24 +133,32 @@ func ScoreResume(c *fiber.Ctx) error {
 		})
 	}
 
-	// If IDs are not provided, use the most recent files
-	var err error
-	if request.ResumeID == "" {
-		request.ResumeID, err = getLatestFileID("resume")
-		if err != nil {
-			return c.Status(404).JSON(fiber.Map{
-				"error": "No resume files found",
-			})
-		}
+	// Clean IDs by removing any existing prefixes
+	cleanedResumeID := cleanID(request.ResumeID, "resume")
+	cleanedJobID := cleanID(request.JobID, "job")
+
+	// Add proper prefixes for file loading
+	resumeFileID := "resume_" + cleanedResumeID
+	jobFileID := "job_" + cleanedJobID
+
+	// Log the cleaned IDs
+	log.Printf("Scoring Resume - Using Resume ID: %s, Job ID: %s", resumeFileID, jobFileID)
+
+	// Load both text and entities using cleaned IDs
+	resumeData, err := loadTextData(resumeFileID, "resume")
+	if err != nil {
+		log.Printf("Error loading resume data: %v", err)
+		return c.Status(404).JSON(fiber.Map{
+			"error": "Resume data not found",
+		})
 	}
 
-	if request.JobID == "" {
-		request.JobID, err = getLatestFileID("job")
-		if err != nil {
-			return c.Status(404).JSON(fiber.Map{
-				"error": "No job files found",
-			})
-		}
+	jobData, err := loadTextData(jobFileID, "job")
+	if err != nil {
+		log.Printf("Error loading job data: %v", err)
+		return c.Status(404).JSON(fiber.Map{
+			"error": "Job description data not found",
+		})
 	}
 
 	// Log the IDs being used
@@ -152,7 +168,7 @@ func ScoreResume(c *fiber.Ctx) error {
 	log.Printf("Scoring Request - ResumeID: %s, JobID: %s", request.ResumeID, request.JobID)
 
 	// Load both text and entities
-	resumeData, err := loadTextData(request.ResumeID, "resume")
+	resumeData, err = loadTextData(request.ResumeID, "resume")
 	if err != nil {
 		log.Printf("Error loading resume data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
@@ -162,8 +178,10 @@ func ScoreResume(c *fiber.Ctx) error {
 	log.Printf("Loaded Resume Data - Skills: %v, Education: %v",
 		resumeData.Entities.Skills,
 		resumeData.Entities.Education)
+	//log the job id
+	log.Printf("Job ID: %s", request.JobID)
 
-	jobData, err := loadTextData(request.JobID, "job")
+	jobData, err = loadTextData(request.JobID, "job")
 	if err != nil {
 		log.Printf("Error loading job data: %v", err)
 		return c.Status(404).JSON(fiber.Map{
@@ -191,30 +209,30 @@ func ScoreResume(c *fiber.Ctx) error {
 
 	softSkillsScore, softSkillsData := calculateSoftSkillsScore(resumeData, jobData)
 
-	scoreResponse := ScoreResponse{
-		OverallScore:    overallScore,
-		SkillsMatch:     skillsScore,
-		ExperienceMatch: experienceScore,
-		EducationMatch:  educationScore,
-		DetailedScores: map[string]float64{
-			"technical_skills": technicalScore,
-			"soft_skills":      math.Min(safeFloat64(softSkillsScore*maxScore), maxScore),
-			"qualifications":   educationScore,
-		},
-		Feedback:           feedback,
-		SoftSkillsAnalysis: softSkillsData,
-	}
-
-	// Calculate skill matches
+	// Calculate skill matches first
 	exactMatches, partialMatches, missingSkills := analyzeSkillMatches(
 		resumeData.Entities.Skills,
 		jobData.Requirements.Skills,
 	)
 
-	scoreResponse.MatchedSkills = SkillMatches{
-		ExactMatches:   exactMatches,
-		PartialMatches: partialMatches,
-		MissingSkills:  missingSkills,
+	// Then initialize scoreResponse with the calculated matches
+	scoreResponse := ScoreResponse{
+		OverallScore: overallScore,
+		DetailedScores: map[string]float64{
+			"technical_skills": technicalScore,
+			"soft_skills":      math.Min(safeFloat64(softSkillsScore*maxScore), maxScore),
+			"qualifications":   educationScore,
+		},
+		ExperienceMatch:    experienceScore,
+		EducationMatch:     educationScore,
+		Feedback:           feedback,
+		SoftSkillsAnalysis: softSkillsData,
+		MatchedSkills: SkillMatches{
+			ExactMatches:   exactMatches,
+			PartialMatches: partialMatches,
+			MissingSkills:  missingSkills,
+		},
+		ProcessedEntities: resumeData.Entities,
 	}
 
 	// Log the final score response
@@ -224,16 +242,36 @@ func ScoreResume(c *fiber.Ctx) error {
 }
 
 func loadTextData(id string, textType string) (*TextData, error) {
-	filePath := filepath.Join("processed_texts", textType, fmt.Sprintf("%s_%s.json", textType, id))
+	// Clean the ID by removing any prefix if present
+	cleanID := strings.TrimPrefix(id, textType+"_")
+	cleanID = strings.TrimSuffix(cleanID, ".json")
 
-	// Add debug logging
-	log.Printf("Attempting to load file: %s", filePath)
+	// Try different filename patterns
+	possiblePaths := []string{
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s_%s.json", textType, cleanID)),
+		filepath.Join("processed_texts", textType, fmt.Sprintf("%s.json", id)),
+		filepath.Join("processed_texts", textType, id),
+	}
 
-	fileData, err := os.ReadFile(filePath)
+	var fileData []byte
+	var err error
+	var successPath string
+
+	// Try each possible path
+	for _, path := range possiblePaths {
+		log.Printf("Attempting to load file: %s", path)
+		if fileData, err = os.ReadFile(path); err == nil {
+			successPath = path
+			break
+		}
+	}
+
 	if err != nil {
-		log.Printf("Error reading file: %v", err)
+		log.Printf("Error reading file from all attempted paths: %v", err)
 		return nil, err
 	}
+
+	log.Printf("Successfully loaded file from: %s", successPath)
 
 	var data TextData
 	if err := json.Unmarshal(fileData, &data); err != nil {
@@ -803,7 +841,7 @@ func extractYearsOfExperience(entities ExtractedEntities) float64 {
 	// Extract years from work experience if available
 	// This is a simplified implementation
 	for _, skill := range entities.Skills {
-		if strings.Contains(strings.ToLower(skill), "year") {
+		if strings.Contains(strings.ToLower(skill), "year") { // Fix: contains -> Contains
 			// Try to parse number before "year"
 			parts := strings.Fields(skill)
 			for i, part := range parts {

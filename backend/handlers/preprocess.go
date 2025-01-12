@@ -14,44 +14,13 @@ import (
 	"strings"
 	"time"
 
+	"interviewme/utils"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/jdkato/prose/v2"
 	"google.golang.org/api/option"
 )
-
-// PreprocessedData represents the extracted data from the resume.
-type PreprocessedData struct {
-	Text            string            `json:"text"`
-	Entities        ExtractedEntities `json:"entities"`
-	Skills          []string          `json:"skills"`
-	Education       []string          `json:"education"`
-	ID              string            `json:"id"` // Add this field
-	TechnicalSkills []string          `json:"technical_skills"`
-	SoftSkills      []string          `json:"soft_skills"`
-	Projects        []Project         `json:"projects"`
-	Experience      []Experience      `json:"experience"`
-}
-
-// Update ExtractedEntities struct to match the actual response format
-type ExtractedEntities struct {
-	Name       string       `json:"name"`
-	Email      []string     `json:"email"` // Keep this as []string to handle multiple emails
-	Phone      string       `json:"phone"`
-	Skills     []string     `json:"skills"`
-	Education  []Education  `json:"education"`
-	Projects   []Project    `json:"projects"`
-	Experience []Experience `json:"experience"`
-}
-
-type Education struct {
-	Degree         string `json:"degree"`
-	Institution    string `json:"institution"`
-	Year           string `json:"year"`
-	Location       string `json:"location"`
-	Specialization string `json:"specialization"`  // Add this field
-	GraduationDate string `json:"graduation_date"` // Add this field
-}
 
 // Add new types for job description
 type JobDescription struct {
@@ -60,48 +29,6 @@ type JobDescription struct {
 	Requirements  []string          `json:"requirements"`
 	Skills        []string          `json:"required_skills"`
 	Experience    map[string]string `json:"experience_requirements"`
-}
-
-type JobRequirements struct {
-	Skills     []string `json:"skills"`
-	Experience struct {
-		MinYears int      `json:"min_years"`
-		Level    string   `json:"level"`
-		Areas    []string `json:"areas"`
-	} `json:"experience"`
-	Education struct {
-		Degree         string   `json:"degree"`
-		Fields         []string `json:"fields"`
-		Qualifications []string `json:"qualifications"`
-	} `json:"education"`
-	Responsibilities []string `json:"responsibilities"`
-}
-
-// Add new structs for Project and Experience
-type Project struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	Technologies []string `json:"technologies"`
-	Duration     string   `json:"duration"`
-	Role         string   `json:"role"`
-	Timeline     string   `json:"timeline"`
-	Team         []string `json:"team"`
-	Achievements []string `json:"achievements"`
-	Status       string   `json:"status"`
-}
-
-type Experience struct {
-	Title            string   `json:"title"`
-	Company          string   `json:"company"`
-	Duration         string   `json:"duration"`
-	Location         string   `json:"location"`
-	Description      string   `json:"description"`
-	Skills           []string `json:"skills"`
-	Responsibilities []string `json:"responsibilities"`
-	Achievements     []string `json:"achievements"`
-	TeamSize         int      `json:"team_size"`
-	Level            string   `json:"level"`
-	RoleDescription  string   `json:"role_description"` // Add this field
 }
 
 // PreprocessResume handles resume preprocessing.
@@ -172,9 +99,20 @@ func PreprocessResume(c *fiber.Ctx) error {
 	processedText := preprocessText(extractedText)
 
 	// Generate a unique ID for the resume
-	resumeID := fmt.Sprintf("resume_%d", time.Now().Unix())
+	timestamp := time.Now().Unix()
+	resumeID := fmt.Sprintf("%d", timestamp)
+	filename := fmt.Sprintf("resume_%s.json", resumeID) // Update filename format
+	filePath := filepath.Join("processed_texts", "resume", filename)
 
-	// Extract entities using Gemini API
+	// Ensure directory exists before saving
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		log.Printf("Error creating directory structure: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to create directory structure",
+		})
+	}
+
+	// Extract entities using Gemini API first
 	entities, err := extractEntitiesWithGemini(processedText)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
@@ -186,31 +124,65 @@ func PreprocessResume(c *fiber.Ctx) error {
 	validateExtractedEntities(&entities)
 
 	// Save processed text with entities
-	err = SaveProcessedText("resume", processedText, resumeID, entities)
-	if err != nil {
+	if err := SaveProcessedText("resume", processedText, resumeID, entities); err != nil {
 		log.Printf("Error saving resume text: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to save processed text",
+		})
 	}
 
-	// Create response with categorized skills
+	// Wait briefly to ensure file is written
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify file exists after saving
+	if _, err := os.Stat(filePath); err != nil {
+		log.Printf("Error verifying saved file: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to verify saved file: %v", err),
+		})
+	}
+
+	// After ensuring file exists, create session
+	sessionID, err := utils.SaveProcessingSession(filename, "")
+	if err != nil {
+		log.Printf("Error saving resume session: %v", err)
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to save resume session",
+		})
+	}
+
+	// Create response with properly initialized entities
 	result := PreprocessedData{
 		Text:            processedText,
 		Entities:        entities,
 		TechnicalSkills: FilterTechnicalSkills(entities.Skills),
 		SoftSkills:      filterSoftSkills(entities.Skills),
-		Education:       extractEducationDetails(entities.Education),
-		ID:              resumeID, // Add this field to PreprocessedData struct
+		Education:       entities.Education,
+		ID:              resumeID,
 		Projects:        entities.Projects,
 		Experience:      entities.Experience,
+		SessionID:       sessionID,
+		Filename:        filename,
+		ProcessedAt:     time.Now(),
 	}
 
-	return c.JSON(result)
+	// Ensure Name is never undefined
+	if result.Entities.Name == "" {
+		result.Entities.Name = "Not provided"
+	}
+
+	// Log the response for debugging
+	log.Printf("Sending response: %+v", result)
+
+	// Return file information and session ID
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    result,
+	})
 }
 
 // preprocessText performs basic text preprocessing.
 func preprocessText(text string) string {
-	// Convert to lowercase
-	text = strings.ToLower(text)
-	// Remove extra whitespace
 	text = strings.Join(strings.Fields(text), " ")
 	// Remove non-printable characters
 	text = strings.Map(func(r rune) rune {
@@ -333,8 +305,11 @@ Text: ` + text
 	content := resp.Candidates[0].Content.Parts[0].(genai.Text)
 	jsonStr := cleanJSONString(string(content))
 
-	// Log the cleaned JSON string
-	log.Printf("Cleaned JSON string: %s", jsonStr)
+	// Save just the cleaned JSON string
+	if err := SaveCleanJSON(jsonStr, "resume"); err != nil {
+		log.Printf("Error saving resume JSON log: %v", err)
+	}
+	log.Printf("Cleaned JSON: %s", jsonStr)
 
 	// Create a temporary struct for initial parsing
 	var rawResponse map[string]interface{}
@@ -346,6 +321,13 @@ Text: ` + text
 	// Safely get string values with type checking
 	if name, ok := rawResponse["name"].(string); ok {
 		entities.Name = name
+	} else if name, ok := rawResponse["Name"].(string); ok { // Add check for uppercase key
+		entities.Name = name
+	}
+
+	// Ensure name is not empty
+	if entities.Name == "" {
+		entities.Name = "Not provided"
 	}
 
 	// Handle email field which can be either string or array
@@ -416,9 +398,84 @@ Text: ` + text
 		}
 	}
 
-	// Extract projects and experience
-	entities.Projects = extractProjects(text)
-	entities.Experience = extractExperience(text)
+	// Extract experience before projects
+	if expArray, ok := rawResponse["experience"].([]interface{}); ok {
+		entities.Experience = make([]Experience, 0, len(expArray))
+		for _, exp := range expArray {
+			if expMap, ok := exp.(map[string]interface{}); ok {
+				experience := Experience{
+					Title:           getString(expMap, "title"),
+					Company:         getString(expMap, "company"),
+					Duration:        getString(expMap, "duration"),
+					Location:        getString(expMap, "location"),
+					Description:     getString(expMap, "description"),
+					RoleDescription: getString(expMap, "role_description"),
+					Level:           getString(expMap, "level"),
+				}
+
+				// Extract responsibilities array
+				if resp, ok := expMap["responsibilities"].([]interface{}); ok {
+					experience.Responsibilities = make([]string, 0, len(resp))
+					for _, r := range resp {
+						if rStr, ok := r.(string); ok {
+							experience.Responsibilities = append(experience.Responsibilities, rStr)
+						}
+					}
+				}
+
+				// Extract skills array
+				if skills, ok := expMap["skills"].([]interface{}); ok {
+					experience.Skills = make([]string, 0, len(skills))
+					for _, s := range skills {
+						if sStr, ok := s.(string); ok {
+							experience.Skills = append(experience.Skills, sStr)
+						}
+					}
+				}
+
+				entities.Experience = append(entities.Experience, experience)
+			}
+		}
+	}
+
+	// Then extract projects separately
+	if projArray, ok := rawResponse["projects"].([]interface{}); ok {
+		entities.Projects = make([]Project, 0, len(projArray))
+		for _, proj := range projArray {
+			if projMap, ok := proj.(map[string]interface{}); ok {
+				project := Project{
+					Name:        getString(projMap, "name"),
+					Description: getString(projMap, "description"),
+					Duration:    getString(projMap, "duration"),
+					Role:        getString(projMap, "role"),
+					Timeline:    getString(projMap, "timeline"),
+					Status:      getString(projMap, "status"),
+				}
+
+				// Extract technologies array
+				if techs, ok := projMap["technologies"].([]interface{}); ok {
+					project.Technologies = make([]string, 0, len(techs))
+					for _, t := range techs {
+						if tStr, ok := t.(string); ok {
+							project.Technologies = append(project.Technologies, tStr)
+						}
+					}
+				}
+
+				entities.Projects = append(entities.Projects, project)
+			}
+		}
+	}
+
+	// Log the processed entities
+	logData := map[string]any{
+		"entities":       entities,
+		"processed_text": text,
+	}
+
+	if err := utils.SaveJSONLog(logData, jsonStr, "resume"); err != nil {
+		log.Printf("Error saving JSON log: %v", err)
+	}
 
 	return entities, nil
 }
@@ -493,7 +550,7 @@ func SaveProcessedText(textType string, text string, id string, entities Extract
 	// Create directory if it doesn't exist
 	outputDir := filepath.Join("processed_texts", textType)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create directory: %v", err)
 	}
 
 	// Create filename with type and ID
@@ -525,7 +582,7 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	processedText := preprocessText(data.Description)
 
 	// Generate a unique ID for the job description
-	jobID := fmt.Sprintf("job_%d", time.Now().Unix())
+	jobID := fmt.Sprintf("%d", time.Now().Unix())
 
 	// Create empty entities for job description
 	emptyEntities := ExtractedEntities{}
@@ -603,8 +660,10 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 	content := resp.Candidates[0].Content.Parts[0].(genai.Text)
 	jsonStr := cleanJSONString(string(content))
 
-	// Log the cleaned JSON for debugging
-	log.Printf("Cleaned JSON string: %s", jsonStr)
+	// Save just the cleaned JSON string
+	if err := SaveCleanJSON(jsonStr, "job"); err != nil {
+		log.Printf("Error saving job JSON log: %v", err)
+	}
 
 	var requirements JobRequirements
 	if err := json.Unmarshal([]byte(jsonStr), &requirements); err != nil {
@@ -661,9 +720,29 @@ func PreprocessJobDescription(c *fiber.Ctx) error {
 		})
 	}
 
+	// Log the processed job description
+	logData := map[string]any{
+		"requirements":     requirements,
+		"processed_text":   processedText,
+		"technical_skills": technicalSkills,
+		"soft_skills":      softSkills,
+	}
+
+	if err := utils.SaveJSONLog(logData, jsonStr, "job"); err != nil {
+		log.Printf("Error saving JSON log: %v", err)
+	}
+
+	// After saving job file
+	sessionIDJob, err := utils.SaveProcessingSession("", jobID)
+	if err != nil {
+		log.Printf("Error saving job session: %v", err)
+	}
+
 	return c.JSON(fiber.Map{
-		"requirements": requirements,
-		"id":           jobID,
+		"requirements":   requirements,
+		"id":             jobID,
+		"session_id_job": sessionIDJob,
+		"filename":       filename,
 	})
 }
 
@@ -679,6 +758,11 @@ func getString(m map[string]interface{}, key string) string {
 
 // Add new function to validate extracted entities
 func validateExtractedEntities(entities *ExtractedEntities) {
+	// Ensure name is initialized
+	if entities.Name == "" {
+		entities.Name = "Not provided"
+	}
+
 	// Ensure skills arrays are initialized
 	if entities.Skills == nil {
 		entities.Skills = []string{}
@@ -699,6 +783,15 @@ func validateExtractedEntities(entities *ExtractedEntities) {
 		}
 	}
 	entities.Skills = uniqueSkills
+
+	// Initialize other required fields if nil
+	if entities.Email == nil {
+		entities.Email = []string{}
+	}
+
+	if entities.Phone == "" {
+		entities.Phone = "Not provided"
+	}
 }
 
 // Add new function to extract education details
@@ -1086,7 +1179,7 @@ func containsProjectIndicators(text string) bool {
 	}
 	text = strings.ToLower(text)
 	for _, indicator := range indicators {
-		if strings.Contains(text, indicator) { // Fix: Contains instead of contains
+		if strings.Contains(text, indicator) {
 			return true
 		}
 	}
@@ -1100,7 +1193,7 @@ func containsExperienceIndicators(text string) bool {
 	}
 	text = strings.ToLower(text)
 	for _, indicator := range indicators {
-		if strings.Contains(text, indicator) { // Fix: Contains instead of contains
+		if strings.Contains(text, indicator) {
 			return true
 		}
 	}
@@ -1139,7 +1232,7 @@ func extractTitle(text string) string {
 
 	text = strings.ToLower(text)
 	for _, pattern := range titlePatterns {
-		if strings.Contains(text, pattern) { // Fix: Contains instead of contains
+		if strings.Contains(text, pattern) {
 			return strings.Title(pattern)
 		}
 	}
@@ -1431,4 +1524,16 @@ func PreprocessJob(c *fiber.Ctx) error {
 	return c.JSON(jobData)
 }
 
+// Example fix for an incomplete function
 // ...existing code...
+
+func extractEmail(raw interface{}) string {
+	if emails, ok := raw.([]interface{}); ok {
+		if len(emails) > 0 {
+			if emailStr, ok := emails[0].(string); ok {
+				return emailStr
+			}
+		}
+	}
+	return "" // Add empty string return value
+}

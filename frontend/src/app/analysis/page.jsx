@@ -7,6 +7,54 @@ import axios from 'axios';
 import { FaCheckCircle, FaBriefcase, FaGraduationCap, FaTools, FaChartLine, 
          FaLanguage, FaCertificate, FaProjectDiagram, FaUserTie, FaArrowLeft, FaArrowRight, FaSpinner } from 'react-icons/fa';
 
+// Add helper functions for data processing
+const processStoredData = (storedData) => {
+  try {
+    const parsedData = JSON.parse(storedData);
+    
+    // Extract resume data
+    const resumeData = parsedData.resumeData || {};
+    const entities = resumeData.entities || {};
+    
+    // Extract scoring data
+    const scores = parsedData.scores || {};
+    const detailedScores = scores.detailed_scores || {};
+
+    return {
+      overall_score: Math.round(scores.overall_score || 0),
+      technical_score: Math.round(detailedScores.technical_skills || 0),
+      soft_skills_score: Math.round(detailedScores.soft_skills || 0),
+      experience_score: Math.round(scores.experience_match || 0),
+      education_score: Math.round(scores.education_match || 0),
+      education: entities.education || [],
+      experience: entities.experience || [],
+      projects: entities.projects || [],
+      skills: entities.skills || [],
+      recommendations: scores.feedback || ['No recommendations available'],
+      matchedSkills: scores.matched_skills || {
+        exact_matches: [],
+        partial_matches: []
+      },
+      soft_skills_analysis: scores.soft_skills_analysis || {
+        score: 0,
+        extracted_skills: [],
+        experience_based_skills: []
+      },
+      filename: resumeData.filename,
+      resumeId: resumeData.filename,
+      jobId: parsedData.jobData?.filename,
+      // Add preprocessing data
+      preprocessed: {
+        resume: parsedData.resumeResponse?.data,
+        job: parsedData.jobResponse?.data
+      }
+    };
+  } catch (error) {
+    console.error('Error processing stored data:', error);
+    return null;
+  }
+};
+
 const AnalysisPage = () => {
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
@@ -32,45 +80,18 @@ const AnalysisPage = () => {
         throw new Error('No scoring data found');
       }
 
-      const parsedData = JSON.parse(storedData);
-      console.log('Retrieved stored data:', parsedData);
-
-      if (!parsedData.scores || !parsedData.resumeData) {
-        throw new Error('Invalid scoring data');
+      const processedData = processStoredData(storedData);
+      if (!processedData) {
+        throw new Error('Error processing scoring data');
       }
 
-      // Simplified ID cleaning functions - just get timestamp
-      const getTimestamp = (id) => {
-        if (!id) return Date.now();
-        const match = id.match(/\d+/);
-        return match ? match[0] : Date.now();
-      };
+      // Clean the job ID
+      const cleanJobId = processedData.jobId?.replace(/^job_job_/, 'job_');
 
-      // Clean IDs to ensure single prefix
-      const cleanResumeId = (id) => `resume_${getTimestamp(id)}`;
-      const cleanJobId = (id) => `job_${getTimestamp(id)}`;
-
-      // Set analysis data with simple timestamp IDs
+      // Update analysis data with processed data
       setAnalysisData({
-        overall_score: Math.round(parsedData.scores.overall_score || 0),
-        technical_score: Math.round(parsedData.scores.detailed_scores?.technical_skills || 0),
-        soft_skills_score: Math.round(parsedData.scores.detailed_scores?.soft_skills || 0),
-        experience_score: Math.round(parsedData.scores.experience_match || 0),
-        education_score: Math.round(parsedData.scores.education_match || 0),
-        education: parsedData.resumeData.entities.education || [],
-        experience: parsedData.resumeData.entities.experience || [],
-        projects: parsedData.resumeData.entities.projects || [],
-        skills: parsedData.resumeData.entities.skills || [],
-        recommendations: parsedData.scores.feedback || ['No recommendations available'],
-        matchedSkills: parsedData.scores.matched_skills || { exact_matches: [], partial_matches: [] },
-        soft_skills_analysis: parsedData.scores.soft_skills_analysis || {
-          score: 0,
-          extracted_skills: [],
-          experience_based_skills: []
-        },
-        filename: parsedData.resumeData.filename, // Add this line
-        resumeId: cleanResumeId(parsedData.resumeId || parsedData.resumeData.id || parsedData.resumeData.filename),
-        jobId: cleanJobId(parsedData.jobId || parsedData.jobData.id),
+        ...processedData,
+        jobId: cleanJobId
       });
 
       setShowContent(true);
@@ -122,47 +143,75 @@ const AnalysisPage = () => {
   }, [isMounted, analysisData]);
 
   useEffect(() => {
-    const fetchExperienceData = async () => {
-      try {
-        if (!analysisData?.resumeId || !analysisData?.jobId) {
-          console.log('Waiting for IDs...');
-          return;
-        }
-
-        const requestData = {
-          resume_id: analysisData.resumeId,
-          job_id: analysisData.jobId
-        };
-
-        console.log('Fetching experience data with:', requestData);
-
-        const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/analyze-experience`,
-          requestData
-        );
-
-        if (response.data) {
-          console.log('Experience analysis received:', response.data);
-          setExperienceAnalysis(response.data);
-        }
-      } catch (error) {
-        console.error('Experience analysis error:', error);
-        setExperienceAnalysis({
-          total_years: 0,
-          roles: [],
-          skills_gained: [],
-          job_fit_analysis: "Failed to analyze experience",
-          responsibility_map: {}
-        });
-      } finally {
-        setIsLoadingExperience(false);
+    const handlePreprocessingResponse = (response, type) => {
+      if (response?.data?.session_id) {
+        const key = type === 'resume' ? 'session_id_resume' : 'session_id_job';
+        localStorage.setItem(key, response.data.session_id);
+        console.log(`Saved ${type} session ID:`, response.data.session_id);
+      } else {
+        console.warn(`No session ID in ${type} response:`, response);
       }
     };
 
-    if (isMounted && analysisData) {
-      fetchExperienceData();
+    // Get and validate stored data
+    const storedData = localStorage.getItem('scoringResults');
+    if (storedData) {
+      const parsedData = JSON.parse(storedData);
+      if (parsedData.resumeResponse) {
+        handlePreprocessingResponse(parsedData.resumeResponse, 'resume');
+      }
+      if (parsedData.jobResponse) {
+        handlePreprocessingResponse(parsedData.jobResponse, 'job');
+      }
     }
-  }, [isMounted, analysisData]);
+  }, []);
+
+  useEffect(() => {
+    const fetchExperienceData = async () => {
+        try {
+            const storedData = JSON.parse(localStorage.getItem('scoringResults'));
+            const resumeFilename = storedData?.resumeFilename;
+            const jobFilename = storedData?.jobFilename;
+
+            if (!resumeFilename || !jobFilename) {
+                console.error('Missing filenames');
+                return;
+            }
+
+            console.log('Fetching experience with files:', {
+                resume: resumeFilename,
+                job: jobFilename
+            });
+
+            const response = await axios.get(
+                `${process.env.NEXT_PUBLIC_API_URL}/analyze-experience`,
+                {
+                    params: {
+                        resume_file: resumeFilename,
+                        job_file: jobFilename
+                    }
+                }
+            );
+
+            if (response.data) {
+                setExperienceAnalysis(response.data);
+            }
+        } catch (error) {
+            console.error('Experience analysis error:', error);
+            setExperienceAnalysis({
+                TotalYearsExperience: 0,
+                Experiences: [],
+                OverallFit: "Failed to analyze experience"
+            });
+        } finally {
+            setIsLoadingExperience(false);
+        }
+    };
+
+    if (isMounted && analysisData) {
+        fetchExperienceData();
+    }
+}, [isMounted, analysisData]);
 
   const handlePdfUpload = async (file) => {
     try {
@@ -239,21 +288,12 @@ const AnalysisPage = () => {
     </div>
   );
 
-  const ExperienceSection = ({ experience, totalYears, jobFitAnalysis }) => {
-    // Ensure we have valid experience data
-    const roles = experience?.map(exp => ({
-      title: exp.title || 'Untitled Role',
-      company: exp.company || 'Company Not Specified',
-      duration: exp.duration || 'Duration Not Specified',
-      skills: exp.skills || [],
-      responsibilities: exp.responsibilities || []
-    })) || [];
-  
+  const ExperienceSection = ({ experience }) => {
     const [currentRole, setCurrentRole] = useState(0);
     const [isTransitioning, setIsTransitioning] = useState(false);
   
     // Return early if no experience data
-    if (!roles || roles.length === 0) {
+    if (!experience || experience.length === 0) {
       return (
         <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
           <div className="flex items-center justify-center h-40">
@@ -267,69 +307,47 @@ const AnalysisPage = () => {
     }
   
     const handleRoleChange = (direction) => {
-      if (roles.length <= 1) return; // Don't animate if only one role
+      if (experience.length <= 1) return;
       
       setIsTransitioning(true);
       setTimeout(() => {
         if (direction === 'next') {
-          setCurrentRole((prev) => (prev + 1) % roles.length);
+          setCurrentRole((prev) => (prev + 1) % experience.length);
         } else {
-          setCurrentRole((prev) => (prev - 1 + roles.length) % roles.length);
+          setCurrentRole((prev) => (prev - 1 + experience.length) % experience.length);
         }
         setIsTransitioning(false);
       }, 300);
     };
   
-    const role = roles[currentRole];
-    
-    // Ensure we have a valid role object
-    if (!role) {
-      return (
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
-          <div className="flex items-center justify-center h-40">
-            <div className="text-center">
-              <FaBriefcase className="text-4xl text-red-400 mx-auto mb-4" />
-              <p className="text-red-400">Error loading experience data</p>
-            </div>
-          </div>
-        </div>
-      );
-    }
+    const role = experience[currentRole];
   
     return (
       <div className="bg-gradient-to-br from-purple-900/50 to-gray-900 rounded-xl p-8 border border-purple-700/30 shadow-2xl">
-        {/* Add total years display */}
-        <div className="mb-4 text-center">
-          <span className="text-purple-400 text-lg">Total Experience: </span>
-          <span className="text-2xl font-bold text-white">{totalYears} years</span>
-        </div>
-
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-2xl font-bold flex items-center text-purple-400">
             <FaBriefcase className="mr-3" />
             Professional Experience
           </h3>
-          {roles.length > 1 && (
+          {experience.length > 1 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-400">
-                {currentRole + 1} of {roles.length}
+                {currentRole + 1} of {experience.length}
               </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleRoleChange('prev')}
                   className="p-2 rounded-lg bg-gray-700/50 hover:bg-purple-600/30 transition-all duration-300
                            border border-gray-600 hover:border-purple-500 group"
-                  aria-label="Previous role"
                 >
-                  <FaArrowLeft className="text-gray-400 group-hover:text-purple-400 transition-colors" />
+                  <FaArrowLeft className="text-gray-400 group-hover:text-purple-400" />
                 </button>
                 <button
                   onClick={() => handleRoleChange('next')}
                   className="p-2 rounded-lg bg-gray-700/50 hover:bg-purple-600/30 transition-all duration-300
                            border border-gray-600 hover:border-purple-500 group"
-                  aria-label="Next role"
                 >
-                  <FaArrowRight className="text-gray-400 group-hover:text-purple-400 transition-colors" />
+                  <FaArrowRight className="text-gray-400 group-hover:text-purple-400" />
                 </button>
               </div>
             </div>
@@ -346,72 +364,54 @@ const AnalysisPage = () => {
               <p className="text-gray-400">{role.duration}</p>
             </div>
   
-            {Array.isArray(role.skills) && role.skills.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-lg font-semibold text-blue-400 flex items-center">
-                  <span className="mr-2">💡</span>
-                  Skills Applied
-                </h5>
-                <div className="flex flex-wrap gap-2">
-                  {role.skills.map((skill, i) => (
-                    <span
-                      key={i}
-                      className="px-4 py-2 bg-blue-500/10 border border-blue-500/30 rounded-full text-sm
-                               text-blue-300 hover:bg-blue-500/20 transition-colors duration-300"
-                    >
-                      {skill}
-                    </span>
-                  ))}
-                </div>
+            <div className="space-y-4">
+              <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
+                <h5 className="text-lg font-semibold text-purple-400 mb-2">Description</h5>
+                <p className="text-gray-300 leading-relaxed">{role.description}</p>
               </div>
-            )}
   
-            {Array.isArray(role.responsibilities) && role.responsibilities.length > 0 && (
-              <div className="space-y-2">
-                <h5 className="text-lg font-semibold text-green-400 flex items-center">
-                  <span className="mr-2">✓</span>
-                  Key Responsibilities
-                </h5>
+              {role.relevant_skills && role.relevant_skills.length > 0 && (
                 <div className="space-y-2">
-                  {role.responsibilities.map((resp, i) => (
-                    <div
-                      key={i}
-                      className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-sm
-                               text-gray-300 hover:bg-green-500/20 transition-colors duration-300"
-                    >
-                      {resp}
-                    </div>
-                  ))}
+                  <h5 className="text-lg font-semibold text-blue-400">Relevant Skills</h5>
+                  <div className="flex flex-wrap gap-2">
+                    {role.relevant_skills.map((skill, i) => (
+                      <span
+                        key={i}
+                        className="px-3 py-1 bg-blue-500/20 border border-blue-500 rounded-full text-sm"
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
   
-          {roles.length > 1 && (
-            <div className="mt-6 flex justify-center">
-              <div className="flex gap-2">
-                {roles.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentRole(index)}
-                    className={`transition-all duration-300 ${
-                      index === currentRole
-                        ? 'w-8 h-2 bg-purple-400'
-                        : 'w-2 h-2 bg-gray-600 hover:bg-gray-500'
-                    } rounded-full`}
-                    aria-label={`Go to role ${index + 1}`}
-                  />
-                ))}
-              </div>
+              {role.job_fit_summary && (
+                <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
+                  <h5 className="text-lg font-semibold text-green-400 mb-2">Job Fit Analysis</h5>
+                  <p className="text-gray-300 leading-relaxed">{role.job_fit_summary}</p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
-
-        {/* Add job fit analysis at the bottom */}
-        {jobFitAnalysis && (
-          <div className="mt-6 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-            <h5 className="text-lg font-semibold text-purple-400 mb-2">Job Fit Analysis</h5>
-            <p className="text-gray-300 leading-relaxed">{jobFitAnalysis}</p>
+  
+        {experience.length > 1 && (
+          <div className="mt-6 flex justify-center">
+            <div className="flex gap-2">
+              {experience.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentRole(index)}
+                  className={`transition-all duration-300 ${
+                    index === currentRole
+                      ? 'w-8 h-2 bg-purple-400'
+                      : 'w-2 h-2 bg-gray-600 hover:bg-gray-500'
+                  } rounded-full`}
+                  aria-label={`Go to role ${index + 1}`}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -713,19 +713,12 @@ const AnalysisPage = () => {
             <div className="grid md:grid-cols-2 gap-6">
               <EducationSection education={analysisData.education} />
               {isLoadingExperience ? (
-                <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
-                  <div className="flex items-center justify-center h-40">
-                    <div className="text-center space-y-4">
-                      <FaSpinner className="text-4xl text-purple-400 mx-auto animate-spin" />
-                      <p className="text-gray-400 text-lg">Analyzing experience...</p>
-                    </div>
-                  </div>
-                </div>
+                <LoadingSpinner message="Analyzing experience..." />
               ) : (
                 <ExperienceSection 
-                  experience={experienceAnalysis?.roles || []}
-                  totalYears={experienceAnalysis?.total_years || 0}
-                  jobFitAnalysis={experienceAnalysis?.job_fit_analysis}
+                  experience={experienceAnalysis?.Experiences || []}
+                  totalYears={experienceAnalysis?.TotalYearsExperience || 0}
+                  overallFit={experienceAnalysis?.OverallFit}
                 />
               )}
             </div>
@@ -752,6 +745,18 @@ const AnalysisPage = () => {
     </div>
   );
 };
+
+// Fix loading spinner component
+const LoadingSpinner = ({ message }) => (
+  <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
+    <div className="flex items-center justify-center h-40">
+      <div className="text-center space-y-4">
+        <FaSpinner className="text-4xl text-purple-400 mx-auto animate-spin" />
+        <p className="text-gray-400 text-lg">{message}</p>
+      </div>
+    </div>
+  </div>
+);
 
 export default dynamic(() => Promise.resolve(AnalysisPage), {
   ssr: false
