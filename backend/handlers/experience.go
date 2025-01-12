@@ -288,15 +288,3 @@ func generateEnhancedDescription(model *genai.GenerativeModel, ctx context.Conte
 
 	return string(resp.Candidates[0].Content.Parts[0].(genai.Text))
 }
-
-func ProcessExperience(data PreprocessedData) error {
-	// Access extracted entities
-	name := data.Name
-	emails := data.Email
-	phone := data.Phone
-
-	// Use these entities in experience processing
-	// ...existing experience processing logic...
-
-	return nil
-}

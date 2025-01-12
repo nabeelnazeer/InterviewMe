@@ -151,19 +151,21 @@ func PreprocessResume(c *fiber.Ctx) error {
 		})
 	}
 
-	// Create response with properly initialized entities
+	// Update the result initialization to match PreprocessedData structure
 	result := PreprocessedData{
+		ProcessedText:   processedText,
 		Text:            processedText,
 		Entities:        entities,
+		RawText:         extractedText,
 		TechnicalSkills: FilterTechnicalSkills(entities.Skills),
 		SoftSkills:      filterSoftSkills(entities.Skills),
 		Education:       entities.Education,
-		ID:              resumeID,
-		Projects:        entities.Projects,
 		Experience:      entities.Experience,
+		Projects:        entities.Projects,
 		SessionID:       sessionID,
 		Filename:        filename,
 		ProcessedAt:     time.Now(),
+		ID:              resumeID,
 	}
 
 	// Ensure Name is never undefined

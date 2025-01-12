@@ -8,6 +8,34 @@ import (
 	"time"
 )
 
+type PreprocessedData struct {
+	ProcessedText   string            `json:"processed_text"`
+	Text            string            `json:"text"`
+	Entities        ExtractedEntities `json:"entities"`
+	RawText         string            `json:"raw_text"`
+	RawJSON         string            `json:"raw_json"`
+	Name            string            `json:"name"`
+	Email           string            `json:"email"`
+	Phone           string            `json:"phone"`
+	Requirements    JobRequirements   `json:"requirements,omitempty"`
+	TechnicalSkills []string          `json:"technical_skills"`
+	SoftSkills      []string          `json:"soft_skills"`
+	Education       []Education       `json:"education"`
+	Experience      []Experience      `json:"experience"`
+	Projects        []Project         `json:"projects"`
+	SessionID       string            `json:"session_id"`
+	Filename        string            `json:"filename"`
+	ProcessedAt     time.Time         `json:"processed_at"`
+	ID              string            `json:"id"`
+}
+
+// Add LogEntry type definition
+type LogEntry struct {
+	Timestamp string           `json:"timestamp"`
+	LogType   string           `json:"log_type"`
+	Data      PreprocessedData `json:"data"`
+}
+
 // SavePreprocessLog saves the raw cleaned JSON string to a log file
 func SavePreprocessLog(jsonStr string, logType string) error {
 	// Create logs directory
@@ -70,15 +98,30 @@ func SaveCleanJSON(jsonStr string, logType string) error {
 	return os.WriteFile(filePath, []byte(jsonStr), 0644)
 }
 
-func SaveLogs(data PreprocessedData) error {
-	logEntry := map[string]interface{}{
-		"id":    data.ID,
-		"name":  data.Name,
-		"email": data.Email,
-		"phone": data.Phone,
-		// ...existing fields...
+func SaveLog(data PreprocessedData, logType string) error {
+	timestamp := time.Now().Format("20060102_150405")
+	filename := fmt.Sprintf("%s_%s.json", logType, timestamp)
+
+	logData := LogEntry{
+		Timestamp: timestamp,
+		LogType:   logType,
+		Data:      data,
 	}
 
-	// Save the log entry
-	// ...existing logging implementation...
+	jsonData, err := json.Marshal(logData)
+	if err != nil {
+		return fmt.Errorf("error marshaling log data: %v", err)
+	}
+
+	logDir := filepath.Join("logs", logType)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return fmt.Errorf("error creating log directory: %v", err)
+	}
+
+	filePath := filepath.Join(logDir, filename)
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("error writing log file: %v", err)
+	}
+
+	return nil
 }

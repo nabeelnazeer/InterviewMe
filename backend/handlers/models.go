@@ -80,21 +80,6 @@ type JobRequirements struct {
 	Responsibilities []string `json:"responsibilities"`
 }
 
-// Update PreprocessedData struct
-type PreprocessedData struct {
-	Text            string            `json:"text"`
-	Entities        ExtractedEntities `json:"entities"`
-	TechnicalSkills []string          `json:"technical_skills"`
-	SoftSkills      []string          `json:"soft_skills"`
-	Education       []Education       `json:"education"`
-	Experience      []Experience      `json:"experience"`
-	Projects        []Project         `json:"projects"`
-	SessionID       string            `json:"session_id"`
-	Filename        string            `json:"filename"`
-	ProcessedAt     time.Time         `json:"processed_at"`
-	ID              string            `json:"id"`
-}
-
 type Entities struct {
 	Name  string   `json:"name"`
 	Email []string `json:"email"`
