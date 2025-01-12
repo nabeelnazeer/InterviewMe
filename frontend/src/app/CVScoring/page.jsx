@@ -1061,8 +1061,8 @@ const handleScore = async () => {
       jobFilename: `job_${jobID}.json`
     };
 
+    console.log('Storing data in localStorage:', dataToStore);
     localStorage.setItem('scoringResults', JSON.stringify(dataToStore));
-    console.log('Stored scoring data:', dataToStore);
 
     await router.push('/analysis');
 

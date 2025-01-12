@@ -54,7 +54,10 @@ func main() {
 	app.Post("/clear", handlers.ClearFiles)
 
 	// Experience routes
-	app.Get("/analyze-experience", handlers.GetProcessedExperience) // Uses query parameters
+	app.Get("/analyze-experience", handlers.GetProcessedExperience) // Make sure the route matches
+
+	// Experience analysis endpoint
+	app.Get("api/experience/analyze", handlers.AnalyzeExperience)
 
 	port := ":8080"
 	println("Server running on port", port)

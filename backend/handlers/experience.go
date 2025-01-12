@@ -2,17 +2,20 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
+
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
 
+// Only keep experience-specific types here
 type ProcessedExperience struct {
 	Title          string   `json:"title"`
 	Company        string   `json:"company"`
@@ -28,33 +31,164 @@ type ExperienceResponse struct {
 	OverallFit           string                `json:"overall_fit"`
 }
 
-// Update the experience handler to use filenames
 func GetProcessedExperience(c *fiber.Ctx) error {
 	resumeFilename := c.Query("resume_file")
 	jobFilename := c.Query("job_file")
 
-	log.Printf("Processing experience with files - Resume: %s, Job: %s", resumeFilename, jobFilename)
+	log.Printf("GetProcessedExperience - Received filenames: resume=%s, job=%s",
+		resumeFilename, jobFilename)
 
 	if resumeFilename == "" || jobFilename == "" {
+		log.Printf("GetProcessedExperience - Missing required files")
 		return c.Status(400).JSON(fiber.Map{
 			"error": "Both resume_file and job_file are required",
 		})
 	}
 
-	// Load data using shared LoadTextData function
+	// Ensure filenames have correct extensions
+	if !strings.HasSuffix(resumeFilename, ".json") {
+		resumeFilename += ".json"
+	}
+	if !strings.HasSuffix(jobFilename, ".json") {
+		jobFilename += ".json"
+	}
+
+	// Clean up any duplicate prefixes
+	resumeFilename = strings.TrimPrefix(resumeFilename, "resume_resume_")
+	resumeFilename = strings.TrimPrefix(resumeFilename, "upload-")
+	if !strings.HasPrefix(resumeFilename, "resume_") {
+		resumeFilename = "resume_" + resumeFilename
+	}
+
+	jobFilename = strings.TrimPrefix(jobFilename, "job_job_")
+	if !strings.HasPrefix(jobFilename, "job_") {
+		jobFilename = "job_" + jobFilename
+	}
+
+	// Construct the full file paths
+	resumePath := fmt.Sprintf("processed_texts/resume/%s", resumeFilename)
+	jobPath := fmt.Sprintf("processed_texts/job/%s", jobFilename)
+
+	log.Printf("GetProcessedExperience - Processing files: resume=%s, job=%s",
+		resumePath, jobPath)
+
+	fmt.Printf("Looking for resume at: %s\n", resumePath)
+	fmt.Printf("Looking for job at: %s\n", jobPath)
+
+	// Load the resume data using the full path
+	resumeData, err := LoadTextDataFromPath(resumePath)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{
+			"error": fmt.Sprintf("Resume file not found at %s: %v", resumePath, err),
+		})
+	}
+
+	// Verify that we have experience data
+	if len(resumeData.Entities.Experience) == 0 {
+		return c.Status(200).JSON(ExperienceResponse{
+			TotalYearsExperience: 0,
+			Experiences:          []ProcessedExperience{},
+			OverallFit:           "No experience data found in resume",
+		})
+	}
+
+	// Load the job data using the full path
+	jobData, err := LoadTextDataFromPath(jobPath)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to read job data at %s: %v", jobPath, err),
+		})
+	}
+
+	// Initialize Gemini
+	ctx := context.Background()
+	client, err := genai.NewClient(ctx, option.WithAPIKey(os.Getenv("GEMINI_API_KEY")))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"error": "Failed to initialize AI client",
+		})
+	}
+	defer client.Close()
+
+	model := client.GenerativeModel("gemini-pro")
+
+	// Process each experience
+	var processedExperiences []ProcessedExperience
+	var totalMonths float64
+
+	// Log the experience data we're processing
+	fmt.Printf("Processing %d experiences\n", len(resumeData.Entities.Experience))
+
+	for _, exp := range resumeData.Entities.Experience {
+		fmt.Printf("Processing experience: %s at %s\n", exp.Title, exp.Company)
+
+		months := calculateDurationInMonths(exp.Duration)
+		totalMonths += months
+
+		// Extract skills from the experience description
+		relevantSkills := extractRelevantSkills(exp.Description, jobData.Requirements)
+
+		processed := ProcessedExperience{
+			Title:          exp.Title,
+			Company:        exp.Company,
+			Duration:       exp.Duration,
+			Description:    generateEnhancedDescription(model, ctx, exp.Description, jobData.ProcessedText),
+			RelevantSkills: relevantSkills,
+			JobFitSummary:  analyzeJobFit(model, ctx, exp.Description, jobData.ProcessedText),
+		}
+
+		processedExperiences = append(processedExperiences, processed)
+	}
+
+	// Generate overall fit analysis
+	overallFit := analyzeOverallFit(model, ctx, processedExperiences, jobData.ProcessedText)
+
+	response := ExperienceResponse{
+		TotalYearsExperience: totalMonths / 12.0, // Convert months to years
+		Experiences:          processedExperiences,
+		OverallFit:           overallFit,
+	}
+
+	// Log the response before sending
+	fmt.Printf("Sending response with %d experiences\n", len(processedExperiences))
+
+	return c.JSON(response)
+}
+
+func AnalyzeExperience(c *fiber.Ctx) error {
+	resumeId := c.Query("resume_id")
+	jobId := c.Query("job_id")
+
+	log.Printf("AnalyzeExperience - Received IDs: resume_id=%s, job_id=%s",
+		resumeId, jobId)
+
+	if resumeId == "" || jobId == "" {
+		log.Printf("AnalyzeExperience - Missing required IDs")
+		return c.Status(400).JSON(fiber.Map{
+			"error": "Both resume_id and job_id are required",
+		})
+	}
+
+	// Construct complete filenames
+	resumeFilename := fmt.Sprintf("resume_%s.json", resumeId)
+	jobFilename := fmt.Sprintf("job_%s.json", jobId)
+
+	log.Printf("AnalyzeExperience - Constructed filenames: resume=%s, job=%s",
+		resumeFilename, jobFilename)
+
+	// Load data using existing LoadTextData function
 	resumeData, err := LoadTextData(resumeFilename, "resume")
 	if err != nil {
-		log.Printf("Error loading resume data: %v", err)
+		log.Printf("AnalyzeExperience - Error loading resume: %v", err)
 		return c.Status(404).JSON(fiber.Map{
-			"error": fmt.Sprintf("Resume file not found: %v", err),
+			"error": fmt.Sprintf("Resume not found: %v", err),
 		})
 	}
 
 	jobData, err := LoadTextData(jobFilename, "job")
 	if err != nil {
-		log.Printf("Error loading job data: %v", err)
-		return c.Status(500).JSON(fiber.Map{
-			"error": fmt.Sprintf("Failed to read job data: %v", err),
+		return c.Status(404).JSON(fiber.Map{
+			"error": fmt.Sprintf("Job not found: %v", err),
 		})
 	}
 
@@ -70,25 +204,30 @@ func GetProcessedExperience(c *fiber.Ctx) error {
 
 	model := client.GenerativeModel("gemini-pro")
 
-	// Process experiences directly from resumeData
 	var processedExperiences []ProcessedExperience
 	var totalMonths float64
 
+	// Process each experience
 	for _, exp := range resumeData.Entities.Experience {
-		// Calculate duration
 		months := calculateDurationInMonths(exp.Duration)
 		totalMonths += months
 
-		// Generate enhanced description with Gemini
+		// Generate enhanced description using Gemini
 		enhancedDesc := generateEnhancedDescription(model, ctx, exp.Description, jobData.ProcessedText)
+
+		// Extract relevant skills
+		relevantSkills := extractRelevantSkills(exp.Description, jobData.Requirements)
+
+		// Analyze job fit
+		jobFit := analyzeJobFit(model, ctx, exp.Description, jobData.ProcessedText)
 
 		processed := ProcessedExperience{
 			Title:          exp.Title,
 			Company:        exp.Company,
 			Duration:       exp.Duration,
 			Description:    enhancedDesc,
-			RelevantSkills: extractRelevantSkills(exp.Description, jobData.Requirements),
-			JobFitSummary:  analyzeJobFit(model, ctx, exp.Description, jobData.ProcessedText),
+			RelevantSkills: relevantSkills,
+			JobFitSummary:  jobFit,
 		}
 
 		processedExperiences = append(processedExperiences, processed)
@@ -247,4 +386,19 @@ func generateEnhancedDescription(model *genai.GenerativeModel, ctx context.Conte
 	}
 
 	return string(resp.Candidates[0].Content.Parts[0].(genai.Text))
+}
+
+// Add this new function to load data directly from path
+func LoadTextDataFromPath(filepath string) (*ProcessedText, error) {
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	var processedText ProcessedText
+	if err := json.Unmarshal(data, &processedText); err != nil {
+		return nil, err
+	}
+
+	return &processedText, nil
 }

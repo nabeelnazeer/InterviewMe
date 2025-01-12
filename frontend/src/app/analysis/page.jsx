@@ -112,8 +112,16 @@ const AnalysisPage = () => {
     
     try {
       const storedData = localStorage.getItem('scoringResults');
-      console.log('Raw stored data:', storedData); // Debug log
+      console.log('Analysis page - Raw stored data:', storedData);
       
+      const parsedData = JSON.parse(storedData);
+      console.log('Analysis page - Parsed stored data:', {
+        resumeId: parsedData.resumeId,
+        jobId: parsedData.jobId,
+        resumeFilename: parsedData.resumeFilename,
+        jobFilename: parsedData.jobFilename
+      });
+
       if (!storedData) {
         throw new Error('No scoring data found');
       }
@@ -214,39 +222,41 @@ const AnalysisPage = () => {
     const fetchExperienceData = async () => {
         try {
             const storedData = JSON.parse(localStorage.getItem('scoringResults'));
-            const resumeFilename = storedData?.resumeFilename;
-            const jobFilename = storedData?.jobFilename;
+            
+            // Extract IDs and log them
+            const resumeId = storedData?.resumeFilename?.replace('resume_', '').replace('.json', '');
+            const jobId = storedData?.jobFilename?.replace('job_', '').replace('.json', '');
 
-            if (!resumeFilename || !jobFilename) {
-                console.error('Missing filenames');
+            console.log('Analysis page - Experience analysis request:', {
+                resumeId,
+                jobId,
+                fullStoredData: storedData
+            });
+
+            console.log('Fetching experience with IDs:', { resumeId, jobId });
+
+            if (!resumeId || !jobId) {
+                console.error('Missing IDs:', { resumeId, jobId });
                 return;
             }
 
-            console.log('Fetching experience with files:', {
-                resume: resumeFilename,
-                job: jobFilename
-            });
-
             const response = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_URL}/analyze-experience`,
+                `${process.env.NEXT_PUBLIC_API_URL}/api/experience/analyze`,
                 {
                     params: {
-                        resume_file: resumeFilename,
-                        job_file: jobFilename
+                        resume_id: resumeId,
+                        job_id: jobId
                     }
                 }
             );
 
             if (response.data) {
+                console.log('Experience analysis response:', response.data);
                 setExperienceAnalysis(response.data);
             }
         } catch (error) {
             console.error('Experience analysis error:', error);
-            setExperienceAnalysis({
-                TotalYearsExperience: 0,
-                Experiences: [],
-                OverallFit: "Failed to analyze experience"
-            });
+            setExperienceAnalysis(null);
         } finally {
             setIsLoadingExperience(false);
         }
@@ -361,11 +371,10 @@ const AnalysisPage = () => {
     );
   };
 
-  const ExperienceSection = ({ experience }) => {
+  const ExperienceSection = ({ experience, totalYears, overallFit }) => {
     const [currentRole, setCurrentRole] = useState(0);
     const [isTransitioning, setIsTransitioning] = useState(false);
   
-    // Return early if no experience data
     if (!experience || experience.length === 0) {
       return (
         <div className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700 shadow-xl">
@@ -394,14 +403,22 @@ const AnalysisPage = () => {
     };
   
     const role = experience[currentRole];
+    // Remove markdown formatting from description and job fit summary
+    const cleanDescription = role.description?.replace(/\*\*/g, '').replace(/\n/g, '<br/>');
+    const cleanJobFitSummary = role.job_fit_summary?.replace(/\*\*/g, '');
   
     return (
-      <div className="bg-gradient-to-br from-purple-900/50 to-gray-900 rounded-xl p-8 border border-purple-700/30 shadow-2xl">
+      <div className="bg-gradient-to-br from-purple-900/50 to-gray-900 rounded-xl p-8 border border-purple-700/30">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-bold flex items-center text-purple-400">
-            <FaBriefcase className="mr-3" />
-            Professional Experience
-          </h3>
+          <div>
+            <h3 className="text-2xl font-bold flex items-center text-purple-400">
+              <FaBriefcase className="mr-3" />
+              Professional Experience
+            </h3>
+            <p className="text-gray-400 mt-2">
+              Total Experience: {totalYears?.toFixed(1)} years
+            </p>
+          </div>
           {experience.length > 1 && (
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-400">
@@ -439,35 +456,29 @@ const AnalysisPage = () => {
   
             <div className="space-y-4">
               <div className="bg-purple-500/10 rounded-lg p-4 border border-purple-500/30">
-                <h5 className="text-lg font-semibold text-purple-400 mb-2">Description</h5>
-                <p className="text-gray-300 leading-relaxed">{role.description}</p>
+                <h5 className="text-lg font-semibold text-purple-400 mb-2">Enhanced Description</h5>
+                <p className="text-gray-300 leading-relaxed" 
+                   dangerouslySetInnerHTML={{ __html: cleanDescription }}></p>
               </div>
-  
-              {role.relevant_skills && role.relevant_skills.length > 0 && (
-                <div className="space-y-2">
-                  <h5 className="text-lg font-semibold text-blue-400">Relevant Skills</h5>
-                  <div className="flex flex-wrap gap-2">
-                    {role.relevant_skills.map((skill, i) => (
-                      <span
-                        key={i}
-                        className="px-3 py-1 bg-blue-500/20 border border-blue-500 rounded-full text-sm"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
   
               {role.job_fit_summary && (
                 <div className="bg-green-500/10 rounded-lg p-4 border border-green-500/30">
                   <h5 className="text-lg font-semibold text-green-400 mb-2">Job Fit Analysis</h5>
-                  <p className="text-gray-300 leading-relaxed">{role.job_fit_summary}</p>
+                  <p className="text-gray-300 leading-relaxed">{cleanJobFitSummary}</p>
                 </div>
               )}
             </div>
           </div>
         </div>
+  
+        {overallFit && (
+          <div className="mt-6 bg-blue-500/10 rounded-lg p-4 border border-blue-500/30">
+            <h5 className="text-lg font-semibold text-blue-400 mb-2">Overall Experience Fit</h5>
+            <p className="text-gray-300 leading-relaxed whitespace-pre-line">
+              {overallFit.replace(/\*\*/g, '')}
+            </p>
+          </div>
+        )}
   
         {experience.length > 1 && (
           <div className="mt-6 flex justify-center">
@@ -760,9 +771,9 @@ const AnalysisPage = () => {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto"> {/* Increased max width */}
         {showContent && analysisData && (
-          <div className="space-y-8">
+          <div className="space-y-10"> {/* Increased vertical spacing */}
             {/* Overall Score */}
             <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
               <h2 className="text-2xl font-bold mb-4 text-green-400">Overall Match Score</h2>
@@ -771,8 +782,8 @@ const AnalysisPage = () => {
               </div>
             </div>
 
-            {/* Detailed Scores */}
-            <div className="grid md:grid-cols-2 gap-6">
+            {/* Technical and Soft Skills - Horizontal */}
+            <div className="grid md:grid-cols-2 gap-8">
               <TechnicalSkillsSection 
                 score={analysisData.technical_score} 
                 matchedSkills={analysisData.matchedSkills}
@@ -783,25 +794,31 @@ const AnalysisPage = () => {
               />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            {/* Education Section - Full Width */}
+            <div className="w-full">
               <EducationSection education={analysisData.education} />
+            </div>
+
+            {/* Experience Section - Full Width */}
+            <div className="w-full">
               {isLoadingExperience ? (
                 <LoadingSpinner message="Analyzing experience..." />
               ) : (
                 <ExperienceSection 
-                  experience={experienceAnalysis?.Experiences || []}
-                  totalYears={experienceAnalysis?.TotalYearsExperience || 0}
-                  overallFit={experienceAnalysis?.OverallFit}
+                  experience={experienceAnalysis?.experiences || []}
+                  totalYears={experienceAnalysis?.total_years_experience || 0}
+                  overallFit={experienceAnalysis?.overall_fit}
                 />
               )}
             </div>
 
-            <ProjectsSection 
-              projects={projectsData} // Remove the fallback to analysisData.projects
-            />
+            {/* Projects Section - Full Width */}
+            <div className="w-full">
+              <ProjectsSection projects={projectsData} />
+            </div>
 
-            {/* Recommendations - Fixed structure */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            {/* Recommendations - Full Width */}
+            <div className="w-full bg-gray-800 rounded-xl p-6 border border-gray-700">
               <h3 className="text-xl font-bold mb-4 text-green-400">Recommendations</h3>
               <div className="space-y-3">
                 {analysisData.recommendations.map((rec, index) => (

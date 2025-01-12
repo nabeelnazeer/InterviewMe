@@ -48,13 +48,14 @@ type Education struct {
 type Project struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
-	Technologies []string `json:"technologies"`
+	Skills       []string `json:"skills"`
+	Technologies []string `json:"technologies"` // Added for preprocessing
 	Duration     string   `json:"duration"`
 	Role         string   `json:"role"`
-	Timeline     string   `json:"timeline"`
+	Timeline     string   `json:"timeline"` // Added for preprocessing
 	Team         []string `json:"team"`
 	Achievements []string `json:"achievements"`
-	Status       string   `json:"status"`
+	Status       string   `json:"status"` // Added for preprocessing
 }
 
 // Experience represents work experience
@@ -93,6 +94,16 @@ type Entities struct {
 	Email []string `json:"email"`
 	Phone string   `json:"phone"`
 	// ...existing fields...
+}
+
+// Add ProcessedText type definition
+type ProcessedText struct {
+	ProcessedText string            `json:"processed_text"`
+	Timestamp     string            `json:"timestamp"`
+	Type          string            `json:"type"`
+	ID            string            `json:"id"`
+	Entities      ExtractedEntities `json:"entities"`
+	Requirements  JobRequirements   `json:"requirements"`
 }
 
 // LoadTextData loads processed text data from file
